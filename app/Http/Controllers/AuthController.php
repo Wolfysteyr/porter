@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 
 class AuthController extends Controller
@@ -13,7 +14,8 @@ class AuthController extends Controller
             'password' => 'required|confirmed'
         ]);
 
-        $user = User::create
+        $user = User::create($fields);
+        return $user;
     }
     public function login(Request $request){
         return 'login';
