@@ -80,7 +80,8 @@ button:focus-visible {
 nav {
   width: 100%;
   background-color: #1e293b; /* Slate-800 */
-  padding: 1rem 2rem;
+  padding: 1rem;
+  padding-right: 2rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   border-bottom: 2px solid #0ea5e9; /* Cyan-500 underline */
   display: flex;
@@ -104,6 +105,16 @@ nav a {
 nav a:hover {
   color: #0ea5e9; /* Cyan-500 */
   border-bottom: 2px solid #0ea5e9;
+
+}
+
+@keyframes hoverbutton{
+  0% {
+    padding-bottom: 0rem;
+  }
+  50% {
+    padding-bottom: 1rem;
+  }
 }
 
 
@@ -122,6 +133,7 @@ nav a:hover {
 .nav-link:hover {
   background-color: #334155; /* bg-slate-700 */
   color: #ffffff;            /* text-white */
+  animation: hoverbutton 0.3s ease-out;
 }
 
 form {
@@ -150,7 +162,7 @@ select {
   border: 1px solid #cbd5e1; /* Slate-300 */
   border-radius: 0.375rem;
   background-color: #424242;
-  color: #0f172a; /* Slate-900 */
+  color: #ffffff; /* Slate-900 */
   font-size: 1rem;
   margin-bottom: 1rem;
   margin-right: 1rem ;
@@ -171,11 +183,21 @@ input[type="submit"]{
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
+input[type="submit"]:hover{
+  background-color: #517383;
+  box-shadow: 0 0 15px #ffffff;
+}
+
+
 .error{
   /* text-align: center; */
   font-weight: 400;
-  color: #ff0c0c;
+  color: #ff0000;
   letter-spacing: -0.5px;
+}
+
+.errorinput{
+  box-shadow: 0 0 20px rgb(255, 0, 0);
 }
 
 
