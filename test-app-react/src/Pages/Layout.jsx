@@ -34,10 +34,11 @@ export default function Layout(){
         <>
             <header>
                 <nav>
+                    <div>
                     <Link to="/" className="nav-link">Home</Link>
-
+                    </div>
                     {user ? (
-                        <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <p>
                                 Welcome, {user.name}
                             </p>
