@@ -16,3 +16,11 @@ Route::post('/login', [AuthController::class, 'login']);
 
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 
+use App\Http\Controllers\ExternalDbController;
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/databases/external/tables', [ExternalDbController::class, 'listTables']);
+    Route::get('/databases/external/tables/{table}/columns', [ExternalDbController::class, 'getTableColumns']);
+
+});
+

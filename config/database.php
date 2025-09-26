@@ -43,6 +43,20 @@ return [
             'transaction_mode' => 'DEFERRED',
         ],
 
+        'external' => [
+            'driver' => 'mysql',
+            'host' => env('EXT_DB_HOST', '127.0.0.1'),
+            'port' => env('EXT_DB_PORT', '3306'),
+            'database' => env('EXT_DB_DATABASE', 'external_db'),
+            'username' => env('EXT_DB_USERNAME', 'root'),
+            'password' => env('EXT_DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+            'engine' => null,
+        ],
+
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DB_URL'),
