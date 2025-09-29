@@ -14,14 +14,45 @@ class ExternalDbController extends Controller
     }
 
     public function getTableData(Request $request, $table)
-    {
+{
+    $limit = max((int) $request->query('limit', 10), 1);
 
-        if ($request->query('limit') <= 0){
-            $limit = 10;
-        } else {
-            $limit = $request->query('limit');
-        }
-        $rows = DB::connection('external')->table($table)->limit($limit)->get();
-        return response()->json($rows);
+    // Columns requested
+    $columns = $request->query('columns');
+    if ($columns) {
+        $columns = explode(',', $columns);
+
+        // Get natural order from schema
+        $dbColumns = DB::connection('external')
+            ->select("
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                  AND TABLE_NAME = ?
+                ORDER BY ORDINAL_POSITION
+            ", [$table]);
+
+        $dbColumns = array_map(fn($col) => $col->COLUMN_NAME, $dbColumns);
+
+        // Reorder user-selected columns to match DB order
+        $columns = array_values(array_intersect($dbColumns, $columns));
+    } else {
+        $columns = ['*'];
+    }
+
+    $rows = DB::connection('external')
+        ->table($table)
+        ->select($columns)
+        ->limit($limit)
+        ->get();
+
+    return response()->json($rows);
+}
+
+
+
+    public function getTableColumns($table){
+         $columns = DB::connection('external')->getSchemaBuilder()->getColumnListing($table);
+        return response()->json($columns);
     }
 }
