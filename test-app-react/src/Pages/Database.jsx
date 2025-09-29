@@ -14,6 +14,7 @@ export default function Database(){
 
     const [tableCols, setTableCols] = useState([]);
     const [selectedCols, setSelectedCols] = useState([]);
+    const [checkListShown, toggleChecklist] = useState(false);
 
   // Fetch tables once when token is available
     useEffect(() => {
@@ -91,7 +92,7 @@ export default function Database(){
   };
     
     
-    
+
     return (
         <>
         
@@ -114,8 +115,11 @@ export default function Database(){
 
                 {tableCols.length > 0 && (
                     <div>
-                    <h3>Select columns</h3>
-                    <div className="column-checklist">
+                     <button onClick={() => toggleChecklist(prev => !prev)}> {checkListShown ? "▲" : "▼"} Select columns</button> <br /> <br />
+                    {checkListShown && (
+                        
+                        <div id="column-checklist" className="column-checklist">
+                             
                         {tableCols.map((col) => (
                             <div key={col}>
                                 <label>
@@ -127,6 +131,8 @@ export default function Database(){
                         ))}
 
                     </div>
+                    ) }
+                    
                     {/* <p>Selected: {selectedCols.join(", ")}</p> */}
 
                     </div>
