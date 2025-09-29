@@ -24,7 +24,6 @@ a:hover {
 
 body {
   margin: 0;
-  /* display: flex; */
   min-width: 320px;
   min-height: 100vh;
 }
@@ -34,6 +33,7 @@ h1 {
   line-height: 1.1;
   
 }
+
 
 .title {
   text-align: center;
@@ -77,7 +77,14 @@ button:focus-visible {
   }
 }
 
+
+header {
+  top: 0;
+  left: 0;
+  position: sticky;
+}
 nav {
+  
   background-color: #1e293b; /* Slate-800 */
   padding: 1rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -86,7 +93,7 @@ nav {
   align-items: center;
   justify-content: space-between;
   position: relative; /* Or use fixed/sticky if needed */
-  z-index: 10;
+  z-index: 1000;
 }
 
 nav a {
@@ -134,6 +141,8 @@ nav a:hover {
   animation: hoverbutton 0.3s ease-out;
 }
 
+
+
 form {
   max-width: 400px;
   margin: 2rem auto;
@@ -152,6 +161,7 @@ input[type="text"],
 input[type="email"],
 input[type="password"],
 input[type="tel"],
+input[type="number"]
 textarea,
 select {
   display: block;
@@ -219,4 +229,39 @@ input[type="submit"]:hover{
   font-weight: bold;
   animation: glow 2s ease-out forwards;
   text-align: center;
+}
+
+.main-div {
+  width: auto;
+  max-width: 90%;       /* keeps content from stretching too wide */
+  margin: 2rem auto;       /* centers horizontally with top/bottom margin */
+  padding: 1rem;           /* inner spacing */
+  background-color: #1e293b; /* dark slate background */
+  border-radius: 0.5rem;   /* rounded corners */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25); /* soft shadow */
+  color: #f1f5f9;          /* light text */
+  text-align: center;
+}
+
+
+
+footer{
+  background-color: #424242;
+  text-align: center;
+  height: 3rem;
+}
+
+footer p{
+  color: #919191;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: sans-serif;
+  font-size: 14px;
+}
+
+.tableContainer{
+  overflow-x: auto;
 }

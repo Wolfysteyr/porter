@@ -3,6 +3,7 @@ import Home from "./Pages/Home";
 import Layout from "./Pages/Layout";
 import Login from "./Pages/Auth/Login";
 import Register from "./Pages/Auth/Register.jsx";
+import Database from "./Pages/Database.jsx";
 
 import './App.css'
 import { useContext } from "react";
@@ -18,7 +19,7 @@ function App() {
         <Route index element={<Home/>}/>
         <Route path="/login" element={ user ? <Home/> : <Login/>}/> 
         <Route path="/register" element={ user ? <Home/> : <Register/>}/>
-        
+        <Route path="/db" element={<Database/>}/>
 
       </Route>
     </Routes>

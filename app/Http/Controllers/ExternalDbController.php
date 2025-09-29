@@ -13,32 +13,15 @@ class ExternalDbController extends Controller
         return response()->json($tables);
     }
 
-    public function getTableData($connection, $table, Request $request)
+    public function getTableData(Request $request, $table)
     {
-        $columns = $request->query('columns'); // comma-separated string
 
-        if ($columns) {
-            $columns = explode(',', $columns);
-            $data = DB::connection($connection)
-                ->table($table)
-                ->select($columns)
-                ->limit(100)
-                ->get();
+        if ($request->query('limit') <= 0){
+            $limit = 10;
         } else {
-            $data = DB::connection($connection)
-                ->table($table)
-                ->limit(100)
-                ->get();
+            $limit = $request->query('limit');
         }
-
-        return response()->json($data);
-    }
-
-
-    public function getTableColumns($table)
-    {
-        $columns = DB::connection('external')->getSchemaBuilder()->getColumnListing($table);
-
-        return response()->json($columns);
+        $rows = DB::connection('external')->table($table)->limit($limit)->get();
+        return response()->json($rows);
     }
 }

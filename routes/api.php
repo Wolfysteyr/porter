@@ -20,7 +20,6 @@ use App\Http\Controllers\ExternalDbController;
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/databases/external/tables', [ExternalDbController::class, 'listTables']);
-    Route::get('/databases/external/tables/{table}/columns', [ExternalDbController::class, 'getTableColumns']);
-
+    Route::get('/databases/external/tables/{table}', [ExternalDbController::class, 'getTableData']);
 });
 

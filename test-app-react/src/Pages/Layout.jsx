@@ -40,7 +40,7 @@ export default function Layout(){
                     {user ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <p>
-                                Welcome, {user.name}
+                                {user.name}
                             </p>
                                 <button onClick={handleLogout}className="nav-link">Logout</button>
                         </div> 
@@ -57,6 +57,10 @@ export default function Layout(){
             <main>
                 <Outlet/>
             </main>
+
+            <footer>
+                <p>Copyright© Maksims Carevs, VTL. All rights not reserved</p>
+            </footer>
         </>
     );
 }
