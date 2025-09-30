@@ -272,29 +272,43 @@ table {
   column-width: 200px;
   column-gap: 0rem;
   max-height: auto;
-  max-width: 80%;
-  margin: auto;
+  max-width: auto;
+  margin-left: auto;
   padding: 0.5rem;
   border: 1px solid #ccc;
   border-radius: 4px;
-  
+text-align: left;
 }
 
-.column-checklist div {
-  display: flex;               /* aligns checkbox and text in a row */
-  align-items: center;         /* vertically center checkbox and text */
-  gap: 0.5rem;                 /* space between checkbox and text */
-  background-color: grey;
-  border: 2px solid;
-  margin: 0.5rem 0;            /* better spacing */
-  border-radius: 10px;
-  width: 200px;                /* fixed width */
-  height: 30px;                /* fixed height */
-  padding: 0 0.5rem;           /* horizontal padding */
-  overflow: hidden;            /* hide overflow text */
-  text-overflow: ellipsis;     /* show "..." if text is too long */
-  white-space: nowrap;         /* prevent text from wrapping */
+h6{
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #6b6b6b;
+  margin-bottom: 0.5rem;
 }
+
+.nested{
+  padding-left: 20px;
+  color: #c4c4c4;
+}
+
+/* .nested label{
+  padding-left: 3rem;
+  text-align: left;
+  color: #a9a9a9
+  
+} */
+
+.fk-details{
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: #b5ccf5;
+  text-align: left;
+}
+
 
 
 

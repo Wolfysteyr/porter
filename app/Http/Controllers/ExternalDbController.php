@@ -15,13 +15,19 @@ class ExternalDbController extends Controller
 
     public function getTableData(Request $request, $table)
 {
+
     $limit = (int) $request->query('limit', 10);
+    $foreignKeys = "";
 
     // Columns requested
     $columns = $request->query('columns');
     if ($columns) {
         $columns = explode(',', $columns);
 
+        
+
+       
+        
         // Get natural order from schema
         $dbColumns = DB::connection('external')
             ->select("
@@ -46,13 +52,52 @@ class ExternalDbController extends Controller
         ->limit($limit)
         ->get();
 
-    return response()->json($rows);
+    if ($foreignKeys != "") {
+        return response()->json([
+        'rows' => $rows,
+        'foreignKeys' => $foreignKeys
+    ]);} else {
+        return response()->json([
+            'rows' => $rows
+        ]);
+    }
+    
 }
 
+public function getTableColumns($table)
+{
+    $columns = DB::connection('external')->getSchemaBuilder()->getColumnListing($table);
 
+    // Get all the constraints (foreign keys) from the table
+    $foreignKeys = DB::connection('external')
+        ->select("
+            SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+            WHERE TABLE_SCHEMA = DATABASE() 
+              AND TABLE_NAME = ? 
+              AND REFERENCED_TABLE_NAME IS NOT NULL
+        ", [$table]);
 
-    public function getTableColumns($table){
-         $columns = DB::connection('external')->getSchemaBuilder()->getColumnListing($table);
-        return response()->json($columns);
+    $formattedForeignKeys = [];
+    foreach ($foreignKeys as $fk) {
+        $fkInfo = [
+            'constraint_name' => $fk->CONSTRAINT_NAME,
+            'referenced_table' => $fk->REFERENCED_TABLE_NAME,
+            'referenced_column' => $fk->REFERENCED_COLUMN_NAME,
+            'referenced_table_columns' => []
+        ];
+
+        // If the foreign key column exists in the fetched columns, get columns from referenced table
+        if (in_array($fk->COLUMN_NAME, $columns)) {
+            $fkInfo['referenced_table_columns'] = DB::connection('external')->getSchemaBuilder()->getColumnListing($fk->REFERENCED_TABLE_NAME);
+        }
+
+        $formattedForeignKeys[$fk->COLUMN_NAME] = $fkInfo;
     }
+
+    return response()->json([
+        'columns' => $columns,
+        'foreignKeys' => $formattedForeignKeys
+    ]);
+}
 }

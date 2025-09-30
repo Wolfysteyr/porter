@@ -59,7 +59,7 @@ export default function Layout(){
             </main>
 
             <footer>
-                <p>Copyright© Maksims Carevs, VTL. All rights not reserved</p>
+                <p>Copyright© Maksims Carevs, VTL. No rights reserved</p>
             </footer>
         </>
     );

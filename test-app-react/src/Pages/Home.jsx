@@ -17,7 +17,9 @@ export default function Home(){
                     <h3 style={{textAlign: "center"}}>Select your action</h3>
 
                     {/* <Link to="/db" className="button">Database Data</Link> */}
-                    <button onClick={() => navigate('/db')}>Database Data</button>
+                    <button onClick={() => navigate('/db')}>Create Database Export Template</button> <br /> <br />
+                    <button onClick={() => navigate('/export')}>[WIP]Export Database</button>   <br /> <br />
+                    <button onClick={() => navigate('/exports')}>[WIP]Exports</button>   <br /> <br />
                 </div>
             ) : 
                 <h2 className="title">Please log in to continue.</h2>
