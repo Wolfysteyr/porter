@@ -28,10 +28,8 @@ export default function Database(){
     const isToggled = (id) => !!toggles[id]; // helper for readability
 
     const [foreignKeys, setForeignKeys] = useState([]); 
-    const [referencedTables, setReferencedTables] = useState({}); // { columnName: referencedTableName }
 
     const [FKSelection, setFKSelection] = useState([]); // { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
-    const [selectedFKTables, setSelectedFKTables] = useState([]); // selected referenced foreign key tables
     // selected referenced foreign keys stored per parent FK constraint: { [parentCol]: [fkColumnName] }
     const [selectedRFKs, setSelectedRFKs] = useState({}); // { parentCol: [fkcol, ...] }
 
