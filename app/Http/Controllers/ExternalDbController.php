@@ -16,7 +16,13 @@ class ExternalDbController extends Controller
     public function getTableData(Request $request, $table)
 {
 
-    $limit = (int) $request->query('limit', 10);
+    // Limit results
+    if ( (int) $request->query('limit') < 1) {
+        $limit = 10;
+    } else {
+        $limit = (int) $request->query('limit');
+    }
+    
     $foreignKeys = "";
 
     // Columns requested

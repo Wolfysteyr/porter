@@ -29,7 +29,86 @@ export default function Database(){
 
     const [foreignKeys, setForeignKeys] = useState([]); 
     const [referencedTables, setReferencedTables] = useState({}); // { columnName: referencedTableName }
-    const [selectedRFKs, setSelectedRFKs] = useState([]); // selected referenced foreign keys
+
+    const [FKSelection, setFKSelection] = useState([]); // { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
+    const [selectedFKTables, setSelectedFKTables] = useState([]); // selected referenced foreign key tables
+    // selected referenced foreign keys stored per parent FK constraint: { [parentCol]: [fkColumnName] }
+    const [selectedRFKs, setSelectedRFKs] = useState({}); // { parentCol: [fkcol, ...] }
+
+
+
+
+    // manage FKSelection: { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
+    function handleFKSelection(parentCol, tableName, fkColumn) {
+        
+
+        // handles the checkboxes for foreign key columns, but scoped to the parent FK (constraint)
+        setSelectedRFKs((prev) => {
+            const copy = { ...prev };
+            const list = Array.isArray(copy[parentCol]) ? [...copy[parentCol]] : [];
+            const idx = list.indexOf(fkColumn);
+            if (idx === -1) {
+                // add
+                list.push(fkColumn);
+            } else {
+                // remove
+                list.splice(idx, 1);
+            }
+            if (list.length) copy[parentCol] = list;
+            else delete copy[parentCol];
+            return copy;
+        });
+
+
+        setFKSelection((prev) => {
+            // deep-copy prev structure (shallow copies are enough for our nested arrays/objects)
+            const copy = prev.map(p => ({
+                parentCol: p.parentCol,
+                fkTables: p.fkTables.map(t => ({ tableName: t.tableName, fkColumns: [...t.fkColumns] }))
+            }));
+
+            const parentIdx = copy.findIndex(p => p.parentCol === parentCol);
+
+            if (parentIdx === -1) {
+                // parent entry doesn't exist -> create it with one table and one column
+                return [
+                    ...copy,
+                    { parentCol, fkTables: [{ tableName, fkColumns: [fkColumn] }] }
+                ];
+            }
+
+            const parent = copy[parentIdx];
+            const tableIdx = parent.fkTables.findIndex(t => t.tableName === tableName);
+
+            if (tableIdx === -1) {
+                // table entry doesn't exist -> add it with the column
+                parent.fkTables.push({ tableName, fkColumns: [fkColumn] });
+            } else {
+                const table = parent.fkTables[tableIdx];
+                const colIdx = table.fkColumns.indexOf(fkColumn);
+
+                if (colIdx === -1) {
+                    // add column
+                    table.fkColumns.push(fkColumn);
+                } else {
+                    // remove column
+                    table.fkColumns.splice(colIdx, 1);
+                    // if table has no columns left, remove the table entry
+                    if (table.fkColumns.length === 0) {
+                        parent.fkTables.splice(tableIdx, 1);
+                    }
+                }
+            }
+
+            // if parent has no fkTables left, remove the parent entry
+            if (parent.fkTables.length === 0) {
+                copy.splice(parentIdx, 1);
+            }
+            // console.log("copy", copy);
+            return copy;
+        });
+    }
+
 
   // Fetch tables once when token is available
     useEffect(() => {
@@ -59,6 +138,8 @@ export default function Database(){
 
         async function fetchTableColumns() {
             setSelectedCols([]);
+            setFKSelection([]);
+            setSelectedRFKs([]);
             const res = await fetch(
             `http://127.0.0.1:8000/api/databases/external/tables/${selectedTable}/columns`,
             { headers: { Authorization: `Bearer ${token}` } }
@@ -70,34 +151,44 @@ export default function Database(){
             // console.log(data);
         }
         fetchTableColumns();
-    }, [selectedTable]);
+    }, [selectedTable, token]);
     
 
 
      // Fetch data from selected table from selected columns
     async function handleFetchTableData() {
         if (!selectedTable) return;
-        let columns = "";
         try {
-            if(selectedCols){
-                columns = `&columns=${selectedCols.join(",")}`;
-            }
+            // build payload with only present values
+            const payload = {};
+            if (rowLimit && Number(rowLimit) > 0) payload.limit = Number(rowLimit);
+            if (Array.isArray(selectedCols) && selectedCols.length > 0) payload.columns = selectedCols;
+            if (Array.isArray(FKSelection) && FKSelection.length > 0) payload.selection = FKSelection;
 
-            console.log(columns);
-            const resource = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${selectedTable}?limit=${rowLimit}${columns}`, {
+            console.log('fetch table data payload:', payload);
+
+            const resource = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${selectedTable}`, {
+                method: 'POST',
                 headers: {
                     Authorization: `Bearer ${token}`,
-                    Accept: "application/json",
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
                 },
+                body: JSON.stringify(payload), // send payload as JSON
             });
+
             if (!resource.ok) throw new Error(`Error ${resource.status}`);
             const data = await resource.json();
-            setTableData(data.rows);
-            // console.log(data.foreignKeys);
-            } catch (err) {
+
+            // normalize response: API might return { rows: [...] } or an array directly
+            const rows = Array.isArray(data) ? data : (data.rows ?? data.data ?? []);
+            setTableData(rows);
+        } catch (err) {
             console.error("Failed to fetch table data:", err);
-            }
         }
+        }
+
+       
 
 
     //chganes selectedCols when a checkbox is checked or unchecked
@@ -109,14 +200,10 @@ export default function Database(){
         );
     };
 
-    //chganes selectedCols when a checkbox is checked or unchecked
-    const handleFKChange = (col) => {
-        setSelectedRFKs((prev) =>
-        prev.includes(col)
-            ? prev.filter((c) => c !== col) // remove if already selected
-            : [...prev, col] // add if not selected
-        );
-    };
+
+    
+
+
     
     
     
@@ -153,7 +240,7 @@ export default function Database(){
                             // Find the foreign key object for this column, if any
                             const fk = Object.values(foreignKeys).find(fk => fk.constraint_name === col);
                             return (
-                                <div key={col}>
+                                <div key={col} className="column-item">
                                     <label>
                                         <input
                                             type="checkbox"
@@ -187,8 +274,8 @@ export default function Database(){
                                                                 <label>
                                                                     <input
                                                                         type="checkbox"
-                                                                        checked={selectedRFKs.includes(fkcol)}
-                                                                        onChange={() => handleFKChange(fkcol)}
+                                                                        checked={Array.isArray(selectedRFKs[fk.constraint_name]) && selectedRFKs[fk.constraint_name].includes(fkcol)}
+                                                                        onChange={() => handleFKSelection(fk.constraint_name, fk.referenced_table, fkcol)}
                                                                     />
                                                                     {fkcol}
                                                                 </label>
