@@ -161,7 +161,7 @@ input[type="text"],
 input[type="email"],
 input[type="password"],
 input[type="tel"],
-input[type="number"]
+input[type="number"], /* <-- added comma */
 textarea,
 select {
   display: block;
@@ -202,7 +202,7 @@ input[type="submit"]:hover{
   /* text-align: center; */
   font-weight: 400;
   color: #ff0000;
-  text-shadow: red 0px 0px 3px;
+  text-shadow: 0 0 6px red; /* corrected */
   letter-spacing: -0.5px;
 }
 
@@ -353,7 +353,7 @@ h6{
   display: inline-block;
 }
 
-.whereSection select, input[type="text"]{
+.whereSection select, .whereSection input[type="text"]{
   animation: selectAppear 0.8s ease-out forwards;
 }
 

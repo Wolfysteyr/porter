@@ -13,9 +13,9 @@ return new class extends Migration
     {
         Schema::create('query_templates', function (Blueprint $table) {
             $table->id();
-            $table->text('name')->notNullable();
-            $table->json('template')->notNullable();
-            $table->text('database')->notNullable();
+            $table->text('name');
+            $table->json('template');
+            $table->text('database');
             $table->timestamps();
         });
     }
