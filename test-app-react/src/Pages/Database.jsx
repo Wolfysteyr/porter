@@ -7,19 +7,30 @@ export default function Database(){
 
     const {token, user} = useContext(AppContext);
 
+    const [showSuccessGlow, setShowSuccessGlow] = useState(false);
+
+    // list of available tables in db
     const [tables, setTables] = useState([]); 
+
+    // payload vars, sent to backend to generate query template
     const [selectedTable, setSelectedTable] = useState("");
-    const [tableData, setTableData] = useState([]);
     const [rowLimit, setRowLimit] = useState(0);
-
-    const [tableCols, setTableCols] = useState([]);
     const [selectedCols, setSelectedCols] = useState([]);
-    // const [checkListShown, toggleChecklist] = useState(false);
+    const [selectedWhere, setSelectedWhere] = useState([]);
+    const [FKSelection, setFKSelection] = useState([]); // { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
 
+    // selected referenced foreign keys stored per parent FK constraint: { [parentCol]: [fkColumnName] }
+    const [selectedRFKs, setSelectedRFKs] = useState({}); // { parentCol: [fkcol, ...] }
+
+    // table data
+    const [tableData, setTableData] = useState([]);
+    const [tableCols, setTableCols] = useState([]);
+    const [foreignKeys, setForeignKeys] = useState([]); //foreign key details of selected table
+
+
+    // used for toggling visibility of various sections
     const [toggles, setToggles] = useState({}); // { id: bool }
 
-    // replace selectedWhere initialization (was an object) with an array of { column, operator, value }
-    const [selectedWhere, setSelectedWhere] = useState([]);
     
     // available operators
     const WHERE_OPERATORS = [
@@ -36,14 +47,6 @@ export default function Database(){
     };
 
     const isToggled = (id) => !!toggles[id]; // helper for readability
-
-    const [foreignKeys, setForeignKeys] = useState([]); 
-
-    const [FKSelection, setFKSelection] = useState([]); // { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
-    // selected referenced foreign keys stored per parent FK constraint: { [parentCol]: [fkColumnName] }
-    const [selectedRFKs, setSelectedRFKs] = useState({}); // { parentCol: [fkcol, ...] }
-
-
 
 
     // manage FKSelection: { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
@@ -148,6 +151,7 @@ export default function Database(){
             setSelectedCols([]);
             setFKSelection([]);
             setSelectedRFKs([]);
+            setSelectedWhere([]);
             const res = await fetch(
             `http://127.0.0.1:8000/api/databases/external/tables/${selectedTable}/columns`,
             { headers: { Authorization: `Bearer ${token}` } }
@@ -188,6 +192,10 @@ export default function Database(){
             if (!resource.ok) throw new Error(`Error ${resource.status}`);
             const data = await resource.json();
 
+            setShowSuccessGlow(true);
+            const SUCCESS_MS = 2000; // match CSS animation duration
+            setTimeout(() => setShowSuccessGlow(false), SUCCESS_MS);
+            
             // normalize response: API might return { rows: [...] } or an array directly
             const rows = Array.isArray(data) ? data : (data.rows ?? data.data ?? []);
             setTableData(rows);
@@ -265,19 +273,12 @@ export default function Database(){
     };
 
 
-
-
-
-    
-    
-    
-
     return (
        <>
         
         {user ? (
-            <div className="main-div">
-                <div>
+            <div className={`main-div ${showSuccessGlow ? "successGlow" : ""}`}>
+                <div style={{width: "50%", margin: "auto auto 20px auto" }}>
                     <label htmlFor="table-select">Select a table</label>
                     <select id="table-select" value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}>
                         <option value="">Choose a table</option>
@@ -381,8 +382,8 @@ export default function Database(){
                                                 const opts = optionsList.filter(o => o === currentCol || !selected.some(s => s.column === o));
                                                  return (
                                                     <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                                                        <select value={currentCol} onChange={(e) => handleSelectedWhere(e, idx)}>
-                                                            <option value="">-- choose column --</option>
+                                                        <select value={currentCol} onChange={(e) => handleSelectedWhere(e, idx)} >
+                                                            <option value="">-- Choose Column --</option>
                                                             {opts.map((col) => <option key={col} value={col}>{col}</option>)}
                                                         </select>
 
@@ -410,8 +411,8 @@ export default function Database(){
                                             })}
 
                                             {/* extra blank select to add another condition (excludes already chosen options) */}
-                                            <select key="extra" value="" onChange={(e) => handleSelectedWhere(e, selected.length)}>
-                                                <option value="">-- choose column --</option>
+                                            <select key="extra" value="" className="blankSelect" onChange={(e) => handleSelectedWhere(e, selected.length)}>
+                                                <option value="" >-- Choose Column --</option>
                                                 {optionsList.filter(o => !selected.some(s => s.column === o)).map((col) => (
                                                     <option key={col} value={col}>{col}</option>
                                                 ))}
