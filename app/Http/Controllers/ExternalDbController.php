@@ -18,8 +18,9 @@ class ExternalDbController extends Controller
     public function getTableData(Request $request, $table)
     {
         $columns    = $request->input('columns', []);
-        $limit      = $request->input('limit');
+        $limit      = $request->input('limit', 10);
         $selection  = $request->input('selection', []);
+        $whereConds = $request->input('where', []);
 
 
         // validation for table and column names to prevent SQL injection
@@ -27,8 +28,8 @@ class ExternalDbController extends Controller
             return preg_match('/^[a-zA-Z0-9_]+$/', $name);
         };
 
-        // Prepare main table select columns (qualified with main table name)
-        $selectParts = [];
+    // Prepare main table select columns (qualified with main table name)
+    $selectParts = [];
         if (empty($columns)) {
             // fetch all columns for the main table and qualify them
             $dbCols = DB::connection('external')->select(
@@ -36,21 +37,26 @@ class ExternalDbController extends Controller
                 [$table]
             );
             $dbCols = array_map(fn($c) => $c->COLUMN_NAME, $dbCols);
-            foreach ($dbCols as $col) {
-                if (!$validateIdentifier($col)) continue;
-                $selectParts[] = "`$table`.`$col` as `$col`";
-            }
+                foreach ($dbCols as $col) {
+                    if (!$validateIdentifier($col)) continue;
+                    $selectParts[] = "`$table`.`$col` as `$col`";
+                }
         } else {
             foreach ($columns as $col) {
                 if (!$validateIdentifier($col)) continue;
                 $selectParts[] = "`$table`.`$col` as `$col`";
             }
         }
+        $conn = DB::connection('external');
 
-        $sql = "SELECT " . implode(", ", $selectParts) . " FROM `$table`";
+        // build query using query builder so we can append where clauses safely
+        $query = $conn->table($table);
 
-        // Joins: alias every referenced table occurrence to avoid duplicate table/alias errors
+        // Track aliases per referenced table and per parent column
         $aliasCounter = 0;
+        $aliasMap = []; // refTable => [alias1, alias2, ...]
+        $aliasByParent = []; // parentCol => [refTable => alias]
+
         if (!empty($selection) && is_array($selection)) {
             foreach ($selection as $sel) {
                 $parentCol = $sel['parentCol'] ?? null;
@@ -66,15 +72,14 @@ class ExternalDbController extends Controller
                     $fkCols = $fkTable['fkColumns'] ?? [];
                     if (!is_array($fkCols) || empty($fkCols)) continue;
 
-                    // determine referenced column name (the column in referenced table that parentCol maps to)
-                    $refInfo = DB::connection('external')->select(
+                    // determine referenced column name
+                    $refInfo = $conn->select(
                         "SELECT REFERENCED_COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME = ? LIMIT 1",
                         [$table, $parentCol, $refTable]
                     );
                     $refCol = $refInfo[0]->REFERENCED_COLUMN_NAME ?? null;
                     if (!$refCol || !$validateIdentifier($refCol)) {
-                        // fallback: try without REFERENCED_TABLE_NAME filter
-                        $refInfo = DB::connection('external')->select(
+                        $refInfo = $conn->select(
                             "SELECT REFERENCED_COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1",
                             [$table, $parentCol]
                         );
@@ -82,68 +87,88 @@ class ExternalDbController extends Controller
                     }
                     if (!$refCol || !$validateIdentifier($refCol)) continue;
 
-                    // create unique alias for this join occurrence
+                    // create unique alias
                     $alias = preg_replace('/[^A-Za-z0-9_]/', '_', $refTable) . '_' . $aliasCounter++;
+                    $aliasMap[$refTable][] = $alias;
+                    $aliasByParent[$parentCol][$refTable] = $alias;
 
-                    // add LEFT JOIN with alias
-                    $sql .= " LEFT JOIN `$refTable` AS `$alias` ON `$table`.`$parentCol` = `$alias`.`$refCol`";
+                    // add join
+                    $query->leftJoin("{$refTable} as {$alias}", "{$table}.{$parentCol}", '=', "{$alias}.{$refCol}");
 
-                    // add requested referenced columns to select (aliased to avoid collisions)
+                    // add referenced columns to selects
                     foreach ($fkCols as $fkCol) {
                         if (!$validateIdentifier($fkCol)) continue;
                         $aliasCol = $alias . '__' . $fkCol;
-                        $sql .= ""; // no-op to keep patches neat
-                        $selectParts[] = "`$alias`.`$fkCol` as `$aliasCol`";
+                        $selectParts[] = "`{$alias}`.`{$fkCol}` as `{$aliasCol}`";
                     }
                 }
             }
         }
 
-        // Rebuild full select with any referenced columns appended
-        $sql = "SELECT " . implode(", ", $selectParts) . " FROM `$table`";
+        // finalize select list and execute
+        $query->selectRaw(implode(', ', $selectParts));
 
-        // Re-append the joins by extracting from the earlier built SQL (we added join clauses to $sql earlier, but since we overwrote it we need to reconstruct joins)
-        // For simplicity create joins again in the same way using the selection loop (repeat logic but only to append joins)
-        $aliasCounter = 0;
-        if (!empty($selection) && is_array($selection)) {
-            foreach ($selection as $sel) {
-                $parentCol = $sel['parentCol'] ?? null;
-                if (!$parentCol || !$validateIdentifier($parentCol)) continue;
-                $fkTables = $sel['fkTables'] ?? [];
-                if (!is_array($fkTables)) continue;
-                foreach ($fkTables as $fkTable) {
-                    $refTable = $fkTable['tableName'] ?? null;
-                    if (!$refTable || !$validateIdentifier($refTable)) continue;
-                    $fkCols = $fkTable['fkColumns'] ?? [];
-                    if (!is_array($fkCols) || empty($fkCols)) continue;
-                    $refInfo = DB::connection('external')->select(
-                        "SELECT REFERENCED_COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME = ? LIMIT 1",
-                        [$table, $parentCol, $refTable]
-                    );
-                    $refCol = $refInfo[0]->REFERENCED_COLUMN_NAME ?? null;
-                    if (!$refCol || !$validateIdentifier($refCol)) {
-                        $refInfo = DB::connection('external')->select(
-                            "SELECT REFERENCED_COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1",
-                            [$table, $parentCol]
-                        );
-                        $refCol = $refInfo[0]->REFERENCED_COLUMN_NAME ?? null;
+        // apply WHERE payload (array of {column, operator, value} or [column, operator, value])
+        if (!empty($whereConds) && is_array($whereConds)) {
+            foreach ($whereConds as $wc) {
+                // normalize
+                if (is_array($wc) && array_values($wc) === $wc) {
+                    // numeric-array: [col, op, val]
+                    $col = $wc[0] ?? null;
+                    $op = strtoupper($wc[1] ?? '=');
+                    $val = $wc[2] ?? null;
+                } elseif (is_array($wc)) {
+                    $col = $wc['column'] ?? null;
+                    $op = strtoupper($wc['operator'] ?? '=');
+                    $val = $wc['value'] ?? null;
+                } else {
+                    continue;
+                }
+                if (!$col) continue;
+
+                // resolve column to qualified identifier
+                $qualified = null;
+                if (str_contains($col, '.')) {
+                    [$tbl, $cname] = explode('.', $col, 2);
+                    if ($tbl === $table) {
+                        $qualified = "{$table}.{$cname}";
+                    } elseif (isset($aliasMap[$tbl]) && count($aliasMap[$tbl]) === 1) {
+                        $qualified = "{$aliasMap[$tbl][0]}.{$cname}";
+                    } elseif (isset($aliasMap[$tbl]) && count($aliasMap[$tbl]) > 1) {
+                        // ambiguous: multiple aliases exist for this referenced table. pick the first.
+                        $qualified = "{$aliasMap[$tbl][0]}.{$cname}";
+                    } else {
+                        // no join for this referenced table; treat as main table column fallback
+                        $qualified = "{$table}.{$cname}";
                     }
-                    if (!$refCol || !$validateIdentifier($refCol)) continue;
-                    $alias = preg_replace('/[^A-Za-z0-9_]/', '_', $refTable) . '_' . $aliasCounter++;
-                    $sql .= " LEFT JOIN `$refTable` AS `$alias` ON `$table`.`$parentCol` = `$alias`.`$refCol`";
+                } else {
+                    // main table column
+                    $qualified = "{$table}.{$col}";
+                }
+
+                // apply operator
+                if ($op === 'IS NULL') {
+                    $query->whereNull($qualified);
+                } elseif ($op === 'IS NOT NULL') {
+                    $query->whereNotNull($qualified);
+                } elseif (in_array($op, ['IN', 'NOT IN'])) {
+                    if (!is_array($val)) {
+                        // try to parse comma-separated
+                        $val = is_string($val) ? array_map('trim', explode(',', $val)) : [$val];
+                    }
+                    if ($op === 'IN') $query->whereIn($qualified, $val);
+                    else $query->whereNotIn($qualified, $val);
+                } else {
+                    $query->where($qualified, $op, $val);
                 }
             }
         }
 
-        // Limit results
-        if ($limit < 1) $limit = 10;
-        $sql .= " LIMIT " . intval($limit);
+        // limit and execute
+        $limit = intval($limit) > 0 ? intval($limit) : 10;
+        $results = $query->limit($limit)->get();
 
-        $results = DB::connection('external')->select($sql);
-
-        return response()->json([
-            'rows' => $results
-        ]);
+        return response()->json(['rows' => $results]);
 
         // $rows = DB::connection('external')
         //     ->table($table)

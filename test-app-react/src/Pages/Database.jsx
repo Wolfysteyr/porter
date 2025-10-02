@@ -18,6 +18,16 @@ export default function Database(){
 
     const [toggles, setToggles] = useState({}); // { id: bool }
 
+    // replace selectedWhere initialization (was an object) with an array of { column, operator, value }
+    const [selectedWhere, setSelectedWhere] = useState([]);
+    
+    // available operators
+    const WHERE_OPERATORS = [
+      '=', '!=', '<', '<=', '>', '>=',
+      'LIKE', 'NOT LIKE', 'IN', 'NOT IN',
+      'IS NULL', 'IS NOT NULL'
+    ];
+
     const toggle = (id) => {
         setToggles((prev) => ({
         ...prev,
@@ -162,7 +172,7 @@ export default function Database(){
             if (rowLimit && Number(rowLimit) > 0) payload.limit = Number(rowLimit);
             if (Array.isArray(selectedCols) && selectedCols.length > 0) payload.columns = selectedCols;
             if (Array.isArray(FKSelection) && FKSelection.length > 0) payload.selection = FKSelection;
-
+            if (Array.isArray(selectedWhere) && selectedWhere.length > 0) payload.where = selectedWhere;
             console.log('fetch table data payload:', payload);
 
             const resource = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${selectedTable}`, {
@@ -199,7 +209,63 @@ export default function Database(){
     };
 
 
-    
+    // handle changes for the dynamic WHERE selects
+    // e: event, idx: index of the select being changed (the extra blank select has idx === current selectedWhere.length)
+    const handleSelectedWhere = (e, idx) => {
+        const val = e.target.value;
+        setSelectedWhere((prev = []) => {
+            const copy = [...prev];
+
+            // adding from the extra blank select
+            if (idx === copy.length) {
+                if (!val) return copy; // nothing chosen -> no change
+                // add new selected column with default operator and empty value
+                return [...copy, { column: val, operator: '=', value: '' }];
+            }
+
+            // updating an existing select's column
+            if (!val) {
+                // cleared the select -> remove it unless it's the only one
+                if (copy.length > 1) {
+                    copy.splice(idx, 1);
+                    return copy;
+                }
+                // last one cleared -> keep empty state
+                return [];
+            }
+
+            // replace column while keeping operator/value
+            copy[idx] = { ...(copy[idx] || {}), column: val, operator: copy[idx]?.operator ?? '=', value: copy[idx]?.value ?? '' };
+            return copy;
+        });
+    };
+
+    // change operator for a given where row
+    const handleWhereOperatorChange = (idx, operator) => {
+        setSelectedWhere((prev = []) => {
+            const copy = [...prev];
+            if (!copy[idx]) return copy;
+            copy[idx] = { ...copy[idx], operator };
+            // if operator is IS NULL / IS NOT NULL, clear value
+            if (operator === 'IS NULL' || operator === 'IS NOT NULL') {
+                copy[idx].value = '';
+            }
+            return copy;
+        });
+    };
+
+    // change input value for a given where row
+    const handleWhereValueChange = (idx, value) => {
+        setSelectedWhere((prev = []) => {
+            const copy = [...prev];
+            if (!copy[idx]) return copy;
+            copy[idx] = { ...copy[idx], value };
+            return copy;
+        });
+    };
+
+
+
 
 
     
@@ -207,7 +273,7 @@ export default function Database(){
     
 
     return (
-        <>
+       <>
         
         {user ? (
             <div className="main-div">
@@ -222,87 +288,149 @@ export default function Database(){
                             )
                         })}
                     </select>
-
+                    
                     
                 </div>
 
-                {tableCols.length > 0 && (
-                    <div>
-                        <button onClick={() => toggle("column-checklist")}> {isToggled("column-checklist") ? "▲" : "▼"} Select columns</button> <br />
-                    {isToggled("column-checklist") && (
-                        
-                        <div id="column-checklist" className="column-checklist">
+                <div className="filterDIV">
+                    {tableCols.length > 0 && (
+                        <div>
+                            <button onClick={() => toggle("column-checklist")}> {isToggled("column-checklist") ? "▲" : "▼"} Select columns</button> <br />
+                            {isToggled("column-checklist") && (
+                                <div id="column-checklist" className="column-checklist">
 
-                            {/* List of columns with checkboxes */}
-                        {tableCols.map((col) => {
-                            // Find the foreign key object for this column, if any
-                            const fk = Object.values(foreignKeys).find(fk => fk.constraint_name === col);
-                            return (
-                                <div key={col} className="column-item">
-                                    <label>
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedCols.includes(col)}
-                                            onChange={() => handleChange(col)}
-                                        />
-                                        {col}
-                                        {fk && (
-                                            <label
-                                                onClick={() => toggle(fk.constraint_name)}
-                                                style={{ cursor: "pointer", marginLeft: "8px" }}
-                                            >
-                                                {isToggled(fk.constraint_name) ? "-" : "+"}
-                                            </label>
-                                        )}
-                                    </label>
-                                    {/* Show referenced table(s) if this column is a foreign key */}
-                                    {fk && isToggled(fk.constraint_name) && (
-                                        <div className="nested" style={{ marginLeft: "16px" }}>
-                                            <label
-                                                onClick={() => toggle(`${fk.constraint_name}-table`)}
-
-                                            >
-                                                <strong>{fk.referenced_table}</strong> {isToggled(`${fk.constraint_name}-table`) ? "-" : "+"}
-                                            </label>
-                                            {isToggled(`${fk.constraint_name}-table`) && (
-                                                <div style={{ marginLeft: "16px" }}>
-                                                    {fk.referenced_table_columns.map((fkcol, i) =>
-                                                        fkcol === fk.referenced_column ? null : (
-                                                            <div key={i} className="fk-details">
-                                                                <label>
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={Array.isArray(selectedRFKs[fk.constraint_name]) && selectedRFKs[fk.constraint_name].includes(fkcol)}
-                                                                        onChange={() => handleFKSelection(fk.constraint_name, fk.referenced_table, fkcol)}
-                                                                    />
-                                                                    {fkcol}
-                                                                </label>
-                                                            </div>
-                                                        )
+                                    {/* List of columns with checkboxes */}
+                                    {tableCols.map((col) => {
+                                        // Find the foreign key object for this column, if any
+                                        const fk = Object.values(foreignKeys).find(fk => fk.constraint_name === col);
+                                        return (
+                                            <div key={col} className="column-item">
+                                                <label>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedCols.includes(col)}
+                                                        onChange={() => handleChange(col)}
+                                                    />
+                                                    {col}
+                                                    {fk && (
+                                                        <label
+                                                            onClick={() => toggle(fk.constraint_name)}
+                                                            style={{ cursor: "pointer", marginLeft: "8px" }}
+                                                        >
+                                                        {isToggled(fk.constraint_name) ? "-" : "+"}
+                                                        </label>
+                                                    )}
+                                                </label>
+                                                {/* Show referenced table(s) if this column is a foreign key */}
+                                                {fk && isToggled(fk.constraint_name) && (
+                                                <div className="nested" style={{ marginLeft: "16px" }}>
+                                                    <label
+                                                        onClick={() => toggle(`${fk.constraint_name}-table`)}
+                                                    >
+                                                        <strong>{fk.referenced_table}</strong> {isToggled(`${fk.constraint_name}-table`) ? "-" : "+"}
+                                                    </label>
+                                                    {isToggled(`${fk.constraint_name}-table`) && (
+                                                        <div style={{ marginLeft: "16px" }}>
+                                                            {fk.referenced_table_columns.map((fkcol, i) =>
+                                                                fkcol === fk.referenced_column ? null : (
+                                                                    <div key={i} className="fk-details">
+                                                                        <label>
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={Array.isArray(selectedRFKs[fk.constraint_name]) && selectedRFKs[fk.constraint_name].includes(fkcol)}
+                                                                                onChange={() => handleFKSelection(fk.constraint_name, fk.referenced_table, fkcol)}
+                                                                            />
+                                                                            {fkcol}
+                                                                        </label>
+                                                                    </div>
+                                                                ))}
+                                                        </div>
                                                     )}
                                                 </div>
-                                            )}
-                                        </div>
-                                    )}
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+
                                 </div>
-                            );
-                        })}
+                            )}
+                            <div className="whereSection" id="whereSection">
+                                <h3>WHERE conditions</h3>
 
-                    </div>
-                    ) }
+                                {(() => {
+                                    // include referenced FK columns as "referencedTable.column"
+                                    const fkList = Array.isArray(foreignKeys) ? foreignKeys : Object.values(foreignKeys || {});
+                                    const fkOptions = fkList.flatMap(fk =>
+                                        Array.isArray(fk.referenced_table_columns)
+                                            ? fk.referenced_table_columns
+                                                .filter(c => c !== fk.referenced_column) // keep same behavior if desired
+                                                .map(c => `${fk.referenced_table}.${c}`)
+                                            : []
+                                    );
+                                    // combine and dedupe
+                                    const combinedOptions = Array.from(new Set([...(Array.isArray(tableCols) ? tableCols : Object.keys(tableCols || {})), ...fkOptions]));
+                                    const optionsList = combinedOptions;
+                                    const selected = Array.isArray(selectedWhere) ? selectedWhere : [];
+ 
+                                     return (
+                                         <>
+                                            {/* render selects for each current selection (selected is array of {column, operator, value}) */}
+                                            {selected.map((row, idx) => {
+                                                const currentCol = row?.column ?? '';
+                                                // show the current value even if it's excluded from the global selected list
+                                                const opts = optionsList.filter(o => o === currentCol || !selected.some(s => s.column === o));
+                                                 return (
+                                                    <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                                                        <select value={currentCol} onChange={(e) => handleSelectedWhere(e, idx)}>
+                                                            <option value="">-- choose column --</option>
+                                                            {opts.map((col) => <option key={col} value={col}>{col}</option>)}
+                                                        </select>
+
+                                                        {/* operator select - only show when a column is chosen */}
+                                                        {currentCol && (
+                                                            <select
+                                                                value={row.operator ?? '='}
+                                                                onChange={(e) => handleWhereOperatorChange(idx, e.target.value)}
+                                                            >
+                                                                {WHERE_OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
+                                                            </select>
+                                                        )}
+
+                                                        {/* value input - show when a column chosen and operator expects a value */}
+                                                        {currentCol && !(row.operator === 'IS NULL' || row.operator === 'IS NOT NULL') && (
+                                                            <input
+                                                                type="text"
+                                                                placeholder="value"
+                                                                value={row.value ?? ''}
+                                                                onChange={(e) => handleWhereValueChange(idx, e.target.value)}
+                                                            />
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+
+                                            {/* extra blank select to add another condition (excludes already chosen options) */}
+                                            <select key="extra" value="" onChange={(e) => handleSelectedWhere(e, selected.length)}>
+                                                <option value="">-- choose column --</option>
+                                                {optionsList.filter(o => !selected.some(s => s.column === o)).map((col) => (
+                                                    <option key={col} value={col}>{col}</option>
+                                                ))}
+                                            </select>
+                                         </>
+                                     );
+                                 })()}
+                             </div>
+                            <br /><br />
+                            <input type="number" id="limit" placeholder="Input row amount" onChange={(e) => {setRowLimit(e.target.value)}} style={{fontSize:"20px"}}/> <br />
+                                <br />
+                                <button onClick={handleFetchTableData}>Load Data</button>
+                            </div>
                     
-                    {/* <p>Selected: {selectedCols.join(", ")}</p> */}
-
-                    </div>
-                )}
-                <br /><br />
-                <input type="number" id="limit" placeholder="Input row amount" onChange={(e) => {setRowLimit(e.target.value)}} style={{fontSize:"20px"}}/> <br />
-                    <br />
-                    <button onClick={handleFetchTableData}>Load Data</button>
-
-                {tableData.length > 0 && (
+                    )}
+                </div>
+                {selectedTable && tableData.length > 0 && (
                     <div className="tableContainer">
-                        <table border="1" cellPadding="5">
+                        <table id="myTable" border="1" cellPadding="5">
                             <thead>
                                 <tr>
                                     {Object.keys(tableData[0]).map((col, idx) => (
@@ -310,15 +438,15 @@ export default function Database(){
                                     ))}
                                 </tr>
                             </thead>
-                        <tbody>
-                            {tableData.map((row, i) => (
-                                <tr key={i}>
-                                    {Object.values(row).map((val, j) => (
-                                        <td key={j}>{String(val)}</td>
-                                    ))}
-                                </tr>
-                            ))}
-                        </tbody>
+                            <tbody>
+                                {tableData.map((row, i) => (
+                                    <tr key={i}>
+                                        {Object.values(row).map((val, j) => (
+                                            <td key={j}>{String(val)}</td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
                         </table>
                     </div>
                 )}
