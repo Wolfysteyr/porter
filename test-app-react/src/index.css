@@ -202,11 +202,16 @@ input[type="submit"]:hover{
   /* text-align: center; */
   font-weight: 400;
   color: #ff0000;
+  text-shadow: red 0px 0px 3px;
   letter-spacing: -0.5px;
 }
 
 .errorinput{
   box-shadow: 0 0 20px rgb(255, 0, 0);
+}
+
+.filterDIVenabled{
+  animation: popOut 0.3s ease-out forwards;
 }
 
 
@@ -285,10 +290,12 @@ table {
   border-collapse: collapse;
   font-family: sans-serif;
   font-size: 14px;
+  overflow: auto;
 }
 
 .tableContainer{
   overflow-x: auto;
+  overflow-y: auto;
 }
 
 .column-checklist{

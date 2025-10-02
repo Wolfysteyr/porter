@@ -5,22 +5,31 @@ import { Navigate } from "react-router-dom";
 
 export default function Database(){
 
+    //errors, wip
+    const [templateNameErr, setTemplateNameErr] = useState(false);
+    const [templateNameErrMsg, setTemplateNameErrMsg] = useState("");
+
     const {token, user} = useContext(AppContext);
 
+    // success glow animation trigger, wish it wasnt necessary
     const [showSuccessGlow, setShowSuccessGlow] = useState(false);
 
     // list of available tables in db
     const [tables, setTables] = useState([]); 
 
-    // payload vars, sent to backend to generate query template
+    // payload vars, sent to backend to generate query template and show it
+    // also used for template saving
     const [selectedTable, setSelectedTable] = useState("");
     const [rowLimit, setRowLimit] = useState(0);
     const [selectedCols, setSelectedCols] = useState([]);
     const [selectedWhere, setSelectedWhere] = useState([]);
     const [FKSelection, setFKSelection] = useState([]); // { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
 
+    // used for toggling visibility of various sections, also part of template
+    const [toggles, setToggles] = useState({}); // { id: bool }
     // selected referenced foreign keys stored per parent FK constraint: { [parentCol]: [fkColumnName] }
     const [selectedRFKs, setSelectedRFKs] = useState({}); // { parentCol: [fkcol, ...] }
+
 
     // table data
     const [tableData, setTableData] = useState([]);
@@ -28,10 +37,7 @@ export default function Database(){
     const [foreignKeys, setForeignKeys] = useState([]); //foreign key details of selected table
 
 
-    // used for toggling visibility of various sections
-    const [toggles, setToggles] = useState({}); // { id: bool }
 
-    
     // available operators
     const WHERE_OPERATORS = [
       '=', '!=', '<', '<=', '>', '>=',
@@ -272,12 +278,27 @@ export default function Database(){
         });
     };
 
+    const handleSaveTemplate = () => {
+        const templateName = document.getElementById("templateName").value;
+        if (!templateName) {
+            setTemplateNameErr(true);
+            setTemplateNameErrMsg("Template name is required.");
+            return;
+        }
+        
+        // Save the template (you'll need to implement this)
+        console.log("Saving template:", templateName);
+        setTemplateNameErr(false);
+
+
+    };
 
     return (
        <>
-        
+        <h1 className="title">Table Query Builder</h1>
         {user ? (
             <div className={`main-div ${showSuccessGlow ? "successGlow" : ""}`}>
+                
                 <div style={{width: "50%", margin: "auto auto 20px auto" }}>
                     <label htmlFor="table-select">Select a table</label>
                     <select id="table-select" value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}>
@@ -295,7 +316,7 @@ export default function Database(){
 
                 <div className="filterDIV">
                     {tableCols.length > 0 && (
-                        <div>
+                        <div className="filterDIVenabled">
                             <button onClick={() => toggle("column-checklist")}> {isToggled("column-checklist") ? "▲" : "▼"} Select columns</button> <br />
                             {isToggled("column-checklist") && (
                                 <div id="column-checklist" className="column-checklist">
@@ -449,6 +470,15 @@ export default function Database(){
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                )}
+
+                {tableData.length != 0 && (
+                    <div style={{ marginTop: '20px', fontStyle: 'italic' }}>
+                        <label htmlFor="templateName"> Template Name: </label>
+                        <p className="error">{templateNameErrMsg}</p>
+                        <input type="text" name="templateName" id="templateName" style={{ borderColor: templateNameErr ? 'red' : 'initial' , width: '30%' }} />
+                        <button onClick={handleSaveTemplate} > Save Template </button>
                     </div>
                 )}
             </div>
