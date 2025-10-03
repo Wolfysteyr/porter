@@ -1,4 +1,4 @@
-<a href="https://www.vtl.lv/"> <img src="https://www.vtl.lv/uploads/2023/08/vtl-logo-1.svg" alt="VTL logo">
-<a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
-<a href="https://react.dev/"> <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/React-icon.svg/2300px-React-icon.svg.png" alt="React Logo">
-<a href="https://vite.dev/"> <img src="https://logospng.org/download/vite-js/vite-js-4096-logo.png" alt="Vite Logo">
+<a href="https://www.vtl.lv/"> <img src="https://www.vtl.lv/uploads/2023/08/vtl-logo-1.svg"  width="200" alt="VTL logo">
+<a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="200" alt="Laravel Logo"></a></p>
+<a href="https://react.dev/"> <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/React-icon.svg/2300px-React-icon.svg.png"  width="200" alt="React Logo">
+<a href="https://vite.dev/"> <img src="https://logospng.org/download/vite-js/vite-js-4096-logo.png"  width="200" alt="Vite Logo">
