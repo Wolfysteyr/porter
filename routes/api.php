@@ -24,3 +24,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/databases/external/tables/{table}/columns', [ExternalDbController::class, 'getTableColumns']);
 });
 
+// QueryTemplate routes
+use App\Http\Controllers\QueryTemplateController;
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::apiResource('query-templates', QueryTemplateController::class);
+});
+

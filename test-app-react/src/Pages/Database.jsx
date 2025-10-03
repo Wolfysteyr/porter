@@ -185,6 +185,7 @@ export default function Database(){
             if (Array.isArray(selectedWhere) && selectedWhere.length > 0) payload.where = selectedWhere;
             console.log('fetch table data payload:', payload);
 
+            // make request
             const resource = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${selectedTable}`, {
                 method: 'POST',
                 headers: {
@@ -280,18 +281,55 @@ export default function Database(){
 
     const handleSaveTemplate = () => {
         const templateName = document.getElementById("templateName").value;
-        if (!templateName) {
-            setTemplateNameErr(true);
-            setTemplateNameErrMsg("Template name is required.");
-            return;
-        }
+        
         
         // Save the template (you'll need to implement this)
         console.log("Saving template:", templateName);
         setTemplateNameErr(false);
 
+        let query = {};
 
-    };
+        if (rowLimit && Number(rowLimit) > 0) query.limit = Number(rowLimit);
+        if (Array.isArray(selectedCols) && selectedCols.length > 0) query.columns = selectedCols;
+        if (Array.isArray(FKSelection) && FKSelection.length > 0) query.selection = FKSelection;
+        if (Array.isArray(selectedWhere) && selectedWhere.length > 0) query.where = selectedWhere;
+
+        const payload = {
+            name: templateName,
+            query: query,
+            database: "external", // hardcoded for now, later can add internal db support
+            table: selectedTable,
+            user_id: user.id
+        };
+        console.log("Payload for saving template:", payload);
+
+        fetch("http://localhost:8000/api/query-templates", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/json',
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(async response => {
+            const data = await response.json();
+            if (!response.ok) {
+                // Handle HTTP error responses
+                const errorMsg = data?.message || "An error occurred";
+                setTemplateNameErr(true);
+                setTemplateNameErrMsg(errorMsg);
+                throw new Error(errorMsg);
+            }
+            setTemplateNameErr(false);
+            setTemplateNameErrMsg("");
+            console.log("Template saved successfully:", data);
+            // Handle success (e.g., show a success message)
+        })
+        .catch(error => {
+            console.error("Error saving template:", error);
+        });
+    }
 
     return (
        <>
@@ -477,7 +515,7 @@ export default function Database(){
                     <div style={{ marginTop: '20px', fontStyle: 'italic' }}>
                         <label htmlFor="templateName"> Template Name: </label>
                         <p className="error">{templateNameErrMsg}</p>
-                        <input type="text" name="templateName" id="templateName" style={{ borderColor: templateNameErr ? 'red' : 'initial' , width: '30%' }} />
+                        <input type="text" name="templateName" id="templateName" style={{ borderColor: templateNameErr ? 'red' : 'initial' , width: '30%', marginBottom: '10px' }} />
                         <button onClick={handleSaveTemplate} > Save Template </button>
                     </div>
                 )}
