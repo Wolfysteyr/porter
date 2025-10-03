@@ -15,10 +15,12 @@ class QueryTemplate extends Model
         'database',
         'table',
         'user_id',
+        'UI'
     ];
 
     protected $casts = [
         'query' => 'array',
+        'UI' => 'array',
     ];
 
 

@@ -18,6 +18,7 @@ return new class extends Migration
             $table->text('database');
             $table->text('table');
             $table->unsignedBigInteger('user_id')->nullable();
+            $table->json('UI');
             $table->timestamps();
         });
     }

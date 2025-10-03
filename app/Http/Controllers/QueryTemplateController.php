@@ -26,6 +26,7 @@ class QueryTemplateController extends Controller
             'database' => 'required|string',
             'table' => 'required|string',
             'user_id' => 'required|integer|exists:users,id',
+            'UI' => 'sometimes|array',
         ]);
 
         $tpl = new QueryTemplate();
@@ -34,6 +35,7 @@ class QueryTemplateController extends Controller
         $tpl->database = $data['database'];
         $tpl->table = $data['table'];
         $tpl->user_id = $data['user_id'];
+        $tpl->UI = $data['UI'];
         $tpl->save();
         return response()->json($tpl, 201);
     }

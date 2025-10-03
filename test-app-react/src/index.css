@@ -82,6 +82,7 @@ header {
   top: 0;
   left: 0;
   position: sticky;
+  z-index: 1000;
 }
 nav {
   
@@ -161,11 +162,10 @@ input[type="text"],
 input[type="email"],
 input[type="password"],
 input[type="tel"],
-input[type="number"], /* <-- added comma */
+input[type="number"],
 textarea,
 select {
   display: block;
-  width: 100% ;
   padding: 0.5rem 0.5rem;
   border: 1px solid #cbd5e1; /* Slate-300 */
   border-radius: 0.375rem;
@@ -375,4 +375,176 @@ h6{
     box-shadow: white 0px 0px 0px;
   }
 }
+
+
+.template-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+}
+
+/* Use CSS Grid so header and rows share the same column widths */
+.template-item {
+  background-color: #353d49;
+  padding: 1rem;
+  margin: 0.5rem 0;               /* smaller vertical spacing so rows line up */
+  border: 1px solid #eee;
+  border-radius: 5px;
+  transition: background-color 0.3s;
+  text-align: left;
+  align-items: center;
+  display: grid;                  /* <-- changed from flex */
+  grid-template-columns: minmax(180px, 1fr) 140px 120px 140px 160px 110px;
+  gap: 0.5rem;
+  /* remove max-height so content doesn't get clipped/misaligned */
+}
+
+.template-item:hover {
+  background-color: #334664; 
+}
+
+/* Header row uses same grid so column names line up */
+.template-header {
+  background: transparent;
+  border: none;
+  cursor: default;
+  font-weight: 700;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 140px 120px 140px 160px 110px;
+  gap: 0.5rem;
+  align-items: center;
+  position: sticky;               /* keeps header visible at top while scrolling */
+  top: 0;
+  z-index: 5;
+}
+
+/* Keep text on one line and ellipsize overflow for columns with limited width */
+.template-item span,
+.template-header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+/* Right align actions column */
+.template-actions {
+  justify-self: end;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+
+.edit-button {
+  background-color: #b36d04; /* orang */
+  color: white;
+  border: none;
+  padding: 0.5rem 0.9rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: transform 0.3s, box-shadow 0.3s, background-color 0.3s;
+  margin-left: 0.5rem;
+}
+
+.delete-button {
+  background-color: #b30404; /* Red */
+  color: white;
+  border: none;
+  padding: 0.5rem 0.9rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: transform 0.3s, box-shadow 0.3s, background-color 0.3s;
+}
+
+ .delete-button:hover {
+  box-shadow: 0 0 10px #ff0000;
+  transform: scale(1.05);
+}
+
+.edit-button:hover{
+  box-shadow: 0 0 10px #ffaa00;
+  transform: scale(1.05);
+}
+
+.delete-modal{
+  font-size: large;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: fit-content;
+  max-width: 70%;
+  height: fit-content;
+  max-height: 80%;
+  padding: 1rem 1rem 1rem 1rem;
+  transform: translate(-50%, -50%);
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  background-color: #242424;
+  animation: fadeIn 0.3s ease-out forwards;
+  transition: backdrop-filter 0.3s ease-out;
+  border: #ffffff 2px solid;
+  border-radius: 8px;
+}
+
+
+.edit-modal{
+  margin-top: 50px;
+  font-size: large;
+  position: fixed;
+  max-height: 80%;
+  top: 50%;
+  left: 50%;
+  width: 50%;
+  max-width: 100%;
+  height: fit-content;
+  padding: 0.2rem 1rem 1rem 1rem;
+  transform: translate(-50%, -50%);
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  z-index: 1000;
+  background-color: #242424;
+  animation: fadeIn 0.3s ease-out forwards;
+  transition: backdrop-filter 0.3s ease-out;
+  border: #ffffff 2px solid;
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.edit-modal input[type="text"], .edit-modal select{
+  margin: auto auto 1rem auto;
+  width: 80%;
+  padding: 0.5rem;
+  border: 1px solid #cbd5e1; /* Slate-300 */
+  border-radius: 0.375rem;
+  background-color: #424242;
+  color: #ffffff; /* Slate-900 */
+  font-size: 1rem;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.modal-overlay{
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
 

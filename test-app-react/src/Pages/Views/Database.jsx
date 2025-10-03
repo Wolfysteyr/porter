@@ -1,5 +1,5 @@
 import { useContext, useState, useEffect } from "react"
-import { AppContext } from "../Context/AppContext"
+import { AppContext } from "../../Context/AppContext"
 import { Navigate } from "react-router-dom";
 
 
@@ -293,13 +293,24 @@ export default function Database(){
         if (Array.isArray(selectedCols) && selectedCols.length > 0) query.columns = selectedCols;
         if (Array.isArray(FKSelection) && FKSelection.length > 0) query.selection = FKSelection;
         if (Array.isArray(selectedWhere) && selectedWhere.length > 0) query.where = selectedWhere;
+        if (Object.keys(query).length === 0) {
+           query.columns = ["*"];
+       }
+
+        console.log(query);
+        
+        let UI = {
+            toggles,
+            selectedRFKs
+        }
 
         const payload = {
             name: templateName,
             query: query,
             database: "external", // hardcoded for now, later can add internal db support
             table: selectedTable,
-            user_id: user.id
+            user_id: user.id,
+            UI: UI
         };
         console.log("Payload for saving template:", payload);
 
@@ -334,10 +345,14 @@ export default function Database(){
     return (
        <>
         <h1 className="title">Table Query Builder</h1>
-        {user ? (
+        
             <div className={`main-div ${showSuccessGlow ? "successGlow" : ""}`}>
                 
                 <div style={{width: "50%", margin: "auto auto 20px auto" }}>
+                    <label htmlFor="db">Select Database</label>
+                    <select name="db" id="db" disabled>
+                        <option value="Gemini">Gemini</option>
+                    </select>
                     <label htmlFor="table-select">Select a table</label>
                     <select id="table-select" value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}>
                         <option value="">Choose a table</option>
@@ -520,9 +535,6 @@ export default function Database(){
                     </div>
                 )}
             </div>
-        ) : (
-            <Navigate to="/" replace />
-        )}
         </>
     )
 }

@@ -3,7 +3,8 @@ import Home from "./Pages/Home";
 import Layout from "./Pages/Layout";
 import Login from "./Pages/Auth/Login";
 import Register from "./Pages/Auth/Register.jsx";
-import Database from "./Pages/Database.jsx";
+import Database from "./Pages/Views/Database.jsx";
+import Templates from "./Pages/Views/Templates.jsx";
 
 import './App.css'
 import { useContext } from "react";
@@ -19,7 +20,8 @@ function App() {
         <Route index element={<Home/>}/>
         <Route path="/login" element={ user ? <Home/> : <Login/>}/> 
         <Route path="/register" element={ user ? <Home/> : <Register/>}/>
-        <Route path="/db" element={<Database/>}/>
+        <Route path="/db" element={user ? <Database/> : <Login/>}/>
+        <Route path="/templates" element={user ? <Templates/> : <Login/>}/>
 
       </Route>
     </Routes>
