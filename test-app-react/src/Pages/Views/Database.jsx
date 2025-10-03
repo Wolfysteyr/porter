@@ -1,9 +1,11 @@
 import { useContext, useState, useEffect } from "react"
 import { AppContext } from "../../Context/AppContext"
-import { Navigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 
 export default function Database(){
+
+    const navigate = useNavigate();
 
     //errors, wip
     const [templateNameErr, setTemplateNameErr] = useState(false);
@@ -307,7 +309,7 @@ export default function Database(){
         const payload = {
             name: templateName,
             query: query,
-            database: "external", // hardcoded for now, later can add internal db support
+            database: "Gemeni", // hardcoded for now, later can add internal db support
             table: selectedTable,
             user_id: user.id,
             UI: UI
@@ -336,6 +338,7 @@ export default function Database(){
             setTemplateNameErrMsg("");
             console.log("Template saved successfully:", data);
             // Handle success (e.g., show a success message)
+            navigate("/templates", { state: { message: "Template saved successfully!" } });
         })
         .catch(error => {
             console.error("Error saving template:", error);
@@ -346,7 +349,7 @@ export default function Database(){
        <>
         <h1 className="title">Table Query Builder</h1>
         
-            <div className={`main-div ${showSuccessGlow ? "successGlow" : ""}`}>
+            <div className={`main-div`}>
                 
                 <div style={{width: "50%", margin: "auto auto 20px auto" }}>
                     <label htmlFor="db">Select Database</label>
@@ -504,7 +507,7 @@ export default function Database(){
                     )}
                 </div>
                 {selectedTable && tableData.length > 0 && (
-                    <div className="tableContainer">
+                    <div className={`tableContainer ${showSuccessGlow ? "successGlow" : ""}`}>
                         <table id="myTable" border="1" cellPadding="5">
                             <thead>
                                 <tr>

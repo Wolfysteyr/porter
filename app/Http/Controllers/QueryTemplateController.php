@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\QueryTemplate;
+use Illuminate\Validation\Rule;
 
 class QueryTemplateController extends Controller
 {
@@ -25,7 +26,7 @@ class QueryTemplateController extends Controller
             'query' => 'required|array',
             'database' => 'required|string',
             'table' => 'required|string',
-            'user_id' => 'required|integer|exists:users,id',
+            'user_id' => 'nullable|integer|exists:users,id',
             'UI' => 'sometimes|array',
         ]);
 
@@ -34,9 +35,10 @@ class QueryTemplateController extends Controller
         $tpl->query = $data['query'];
         $tpl->database = $data['database'];
         $tpl->table = $data['table'];
-        $tpl->user_id = $data['user_id'];
-        $tpl->UI = $data['UI'];
+        $tpl->user_id = $data['user_id'] ?? null;
+        $tpl->UI = $data['UI'] ?? null;
         $tpl->save();
+
         return response()->json($tpl, 201);
     }
 
@@ -48,13 +50,30 @@ class QueryTemplateController extends Controller
     public function update(Request $request, $id)
     {
         $tpl = QueryTemplate::findOrFail($id);
+
         $data = $request->validate([
-            'name' => 'sometimes|required|string',
-            'template' => 'sometimes|required|array',
-            'database' => 'sometimes|required|string',
+            'name' => [
+                'required',
+                'string',
+                Rule::unique('query_templates', 'name')->ignore($tpl->id),
+            ],
+            'query' => 'required|array',
+            'database' => 'required|string',
+            'table' => 'required|string',
+            'user_id' => 'nullable|integer|exists:users,id',
+            'UI' => 'sometimes|array',
         ]);
-        $tpl->update($data);
-        return response()->json($tpl);
+
+        // update existing model
+        $tpl->name = $data['name'];
+        $tpl->query = $data['query'];
+        $tpl->database = $data['database'];
+        $tpl->table = $data['table'];
+        $tpl->user_id = $data['user_id'] ?? $tpl->user_id;
+        $tpl->UI = $data['UI'] ?? $tpl->UI;
+        $tpl->save();
+
+        return response()->json($tpl, 200);
     }
 
     public function destroy($id)

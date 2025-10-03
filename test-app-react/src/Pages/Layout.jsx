@@ -36,6 +36,9 @@ export default function Layout(){
                 <nav>
                     <div>
                     <Link to="/" className="nav-link">Home</Link>
+                    <Link to="/tqb" className="nav-link">Table Query Builder</Link>
+                    <Link to="/templates" className="nav-link">Templates</Link>
+                    
                     </div>
                     {user ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

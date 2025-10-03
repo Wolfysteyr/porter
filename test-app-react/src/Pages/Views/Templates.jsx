@@ -3,19 +3,37 @@ import { AppContext } from '../../Context/AppContext';
 import { useContext } from 'react';
 import { useState , useEffect} from 'react';
 import Modal from 'react-modal';
+import { useNavigate, useLocation } from 'react-router-dom';
+
 
 Modal.setAppElement('#root');
 
 export default function Templates() {
-    
+
+    const location = useLocation(); 
+    const navigate = useNavigate();
+
+    // show message if navigated from another page with state
+    useEffect(() => {
+        if (location.state && location.state.message) {
+            openMessageModal(location.state.message);
+            setMessageSuccess(true);
+            // Clear the state to prevent showing the message again on future navigations
+            navigate(location.pathname, { replace: true, state: {} });
+        }
+    }, [location, navigate]);
+
     const [templates, setTemplates] = useState([]);
-    const { token } = useContext(AppContext);
+    const { user, token } = useContext(AppContext);
 
     // new state for modal
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [templateToDelete, setTemplateToDelete] = useState(null);
 
-  
+    // --- Message modal states ---
+    const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
+    const [message, setMessage] = useState('');
+    const [messageSuccess, setMessageSuccess] = useState(true); // true for success, false for error
 
     // --- Edit modal states ---
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -44,7 +62,13 @@ export default function Templates() {
         fetchTemplates();
     }, []);
 
-  
+    function openMessageModal(msg) {
+        setMessage(msg);
+        setIsMessageModalOpen(true);
+        setTimeout(() => {
+            setIsMessageModalOpen(false);
+        }, 3000); // auto-close after 3 seconds 
+    }
 
     
     async function fetchTemplates(){
@@ -219,7 +243,9 @@ export default function Templates() {
     // save edited template
     async function handleSaveEditedTemplate(){
         if (!editTemplateId) return;
+
         const query = {};
+        
         if (editRowLimit && Number(editRowLimit) > 0) query.limit = Number(editRowLimit);
         if (Array.isArray(editSelectedCols) && editSelectedCols.length > 0) query.columns = editSelectedCols;
         if (Array.isArray(editFKSelection) && editFKSelection.length > 0) query.selection = editFKSelection;
@@ -231,8 +257,9 @@ export default function Templates() {
             name: editName,
             query: query,
             template: query, // also send 'template' to satisfy update validation mismatch
-            database: "external",
-            table: editSelectedTable,
+            database: "Gemini",
+            table: editSelectedTable,//#endregion
+            user_id: user.id,
             UI: UI
         };
         try {
@@ -246,10 +273,15 @@ export default function Templates() {
                 body: JSON.stringify(payload)
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data?.message || 'Update failed');
+            if (!res.ok) {
+                setMessageSuccess(false);
+                openMessageModal("Failed to update template");
+                throw new Error(data?.message || 'Update failed');
+            }
             // update local templates list
             setTemplates(prev => prev.map(t => t.id === editTemplateId ? data : t));
             closeEditModal();
+            setMessageSuccess(true);
             openMessageModal("Template updated successfully");
         } catch (err) {
             console.error("Failed to save edited template", err);
@@ -266,6 +298,8 @@ export default function Templates() {
     function closeDeleteModal() {
         setTemplateToDelete(null);
         setIsDeleteModalOpen(false);
+       
+
     }
 
     // perform the actual delete when user confirms in modal
@@ -283,10 +317,13 @@ export default function Templates() {
 
         if (response.ok) {
             setTemplates(templates.filter(template => template.id !== id));
+            
         } else {
             console.error("Failed to delete template");
         }
-
+        setMessageSuccess(true);
+        openMessageModal("Template deleted successfully");
+        
         closeDeleteModal();
     }
 
@@ -331,7 +368,12 @@ export default function Templates() {
                  )}
              </div>
 
-            
+            {/* Message modal */}
+            <Modal isOpen={isMessageModalOpen} onRequestClose={isMessageModalOpen} contentLabel="Message" className={`message-modal ${messageSuccess ? 'success' : 'error'}`} overlayClassName="none">
+                <div style={{ padding: '1rem' }}>
+                    <p>{message}</p>
+                </div>
+            </Modal>
 
             {/* Delete confirmation modal */}
             <Modal

@@ -20,7 +20,7 @@ function App() {
         <Route index element={<Home/>}/>
         <Route path="/login" element={ user ? <Home/> : <Login/>}/> 
         <Route path="/register" element={ user ? <Home/> : <Register/>}/>
-        <Route path="/db" element={user ? <Database/> : <Login/>}/>
+        <Route path="/tqb" element={user ? <Database/> : <Login/>}/>
         <Route path="/templates" element={user ? <Templates/> : <Login/>}/>
 
       </Route>

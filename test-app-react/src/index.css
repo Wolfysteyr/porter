@@ -26,6 +26,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 h1 {
@@ -268,21 +270,23 @@ input[type="submit"]:hover{
   color: #f1f5f9;          /* light text */
   text-align: center;
 }
-
-.main-div.successGlow {
-  animation: successGlow 0.8s ease-in-out;
+main {
+  flex-grow: 1;
 }
-
 
 
 footer{
   background-color: #424242;
   text-align: center;
   height: 3rem;
+  position: fixed;
+  width: 100%;
+bottom: 0;
 }
 
 footer p{
   color: #919191;
+  
 }
 
 table {
@@ -296,6 +300,10 @@ table {
 .tableContainer{
   overflow-x: auto;
   overflow-y: auto;
+}
+
+.successGlow {
+  animation: successGlow 0.8s ease-in-out;
 }
 
 .column-checklist{
@@ -548,3 +556,33 @@ h6{
 }
 
 
+.message-modal{
+ margin-top: 50px;
+  font-size: large;
+  position: fixed;
+  max-height: 80%;
+  left: 50%;
+  top:0;
+  width: 30%;
+  max-width: 100%;
+  height: fit-content;
+  padding: 0.2rem 1rem 1rem 1rem;
+  transform: translate(-50%);
+  align-items: center;
+  text-align: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease-out forwards, fadeIn 0.3s ease-in reverse;
+  animation-delay: 0s, 2.7s;
+  border-radius: 8px;
+  overflow: auto; 
+}
+
+.message-modal.error{
+  background-color: #4b0000;
+  box-shadow: 0 0 15px #ff0000;
+}
+
+.message-modal.success{
+  background-color: #114b00;
+  box-shadow: 0 0 15px #68ff22;
+}
