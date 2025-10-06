@@ -500,7 +500,7 @@ export default function Database(){
                              </div>
                             <br /><br />
                             <input type="number" id="limit" placeholder="Input row amount" onChange={(e) => {setRowLimit(e.target.value)}} style={{fontSize:"20px"}}/> <br />
-                                <br />
+                                <br /> 
                                 <button onClick={handleFetchTableData}>Load Data</button>
                             </div>
                     
@@ -508,6 +508,7 @@ export default function Database(){
                 </div>
                 {selectedTable && tableData.length > 0 && (
                     <div className={`tableContainer ${showSuccessGlow ? "successGlow" : ""}`}>
+                        <br />
                         <table id="myTable" border="1" cellPadding="5">
                             <thead>
                                 <tr>

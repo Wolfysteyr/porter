@@ -194,7 +194,7 @@ input[type="submit"]{
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
-input[type="submit"]:hover{
+input[type="submit"]:hover, select:hover{
   background-color: #517383;
   box-shadow: 0 0 15px #ffffff;
 }
@@ -438,6 +438,18 @@ h6{
   display: block;
 }
 
+.template-item span:hover,
+.template-header span:hover {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  z-index: 50;
+  transition: font-size 0.3s, box-shadow 0.3s;
+  font-size: large;
+  text-shadow: white 0px 0px 5px;
+  font-weight: 600;
+}
+
 /* Right align actions column */
 .template-actions {
   justify-self: end;
@@ -558,7 +570,7 @@ h6{
 
 .message-modal{
  margin-top: 50px;
-  font-size: large;
+  font-size:x-large;
   position: fixed;
   max-height: 80%;
   left: 50%;
@@ -566,7 +578,6 @@ h6{
   width: 30%;
   max-width: 100%;
   height: fit-content;
-  padding: 0.2rem 1rem 1rem 1rem;
   transform: translate(-50%);
   align-items: center;
   text-align: center;
