@@ -44,7 +44,7 @@ return [
         ],
 
         'external' => [
-            'driver' => 'mysql',
+            'driver' => env('EXT_DB_DRIVER', 'mysql'),
             'host' => env('EXT_DB_HOST', '127.0.0.1'),
             'port' => env('EXT_DB_PORT', '3306'),
             'database' => env('EXT_DB_DATABASE', 'external_db'),

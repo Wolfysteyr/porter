@@ -1,15 +1,22 @@
 import { useContext, useState, useEffect } from "react"
 import { AppContext } from "../../Context/AppContext"
 import { useNavigate } from "react-router-dom";
+import Modal from 'react-modal';
 
 
 export default function Database(){
 
     const navigate = useNavigate();
 
+
+    const [loading, toggleLoading] = useState(false);
+
     //errors, wip
     const [templateNameErr, setTemplateNameErr] = useState(false);
     const [templateNameErrMsg, setTemplateNameErrMsg] = useState("");
+    const [message, setMessage] = useState("");
+    const [messageSuccess, setMessageSuccess] = useState(false);
+    const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
 
     const {token, user} = useContext(AppContext);
 
@@ -18,9 +25,73 @@ export default function Database(){
 
     // list of available tables in db
     const [tables, setTables] = useState([]); 
+    const [databases, setDatabases] = useState([]); // for future use if internal dbs are added
+
+    // new database modal vars
+    const [newDBName, setNewDBName] = useState("");
+    const [newDBdescription, setNewDBdescription] = useState("");
+    const [newDBDriver, setNewDBDriver] = useState("mysql");
+    const [newDBHost, setNewDBHost] = useState("127.0.0.1");
+    const [newDBPort, setNewDBPort] = useState("3306");
+    const [newDBUsername, setNewDBUsername] = useState("root");
+    const [newDBPassword, setNewDBPassword] = useState("");
+
+    async function handleCreateNewDatabase() {
+        toggleLoading(true);
+        const payload = {
+            name: newDBName,
+            description: newDBdescription,
+            driver: newDBDriver,
+            host: newDBHost,
+            port: newDBPort,
+            username: newDBUsername,
+            password: newDBPassword
+        };
+        // create new external database record
+         try {
+             const response = await fetch("http://localhost:8000/api/databases/external", {
+                 method: "POST",
+                 headers: {
+                     "Content-Type": "application/json",
+                     Authorization: `Bearer ${token}`,
+                 },
+                 body: JSON.stringify(payload),
+             });
+             
+             if (!response.ok) {
+                 const errorData = await response.json();
+                 const errorMsg = errorData?.message || "An error occurred";
+                 throw new Error(errorMsg);
+             } 
+             const data = await response.json();
+             toggleLoading(false);
+             await getDatabases(); // refresh database list
+            // prefer selecting by description (backend lookups use description)
+            setSelectedDatabase(data.name);
+            setToggleNewDBModal(false);
+            showMessage("Database created successfully!", true);
+         } catch (error) {
+             console.error("Error creating new database:", error);
+             toggleLoading(false);
+             showMessage(`Error creating new database: ${error.message}`, false);
+         }
+            
+
+
+    }
+    
+    function showMessage(msg, success) {
+        setMessage(msg);
+        setMessageSuccess(success);
+        setIsMessageModalOpen(true);
+        setTimeout(() => {
+            setIsMessageModalOpen(false);
+        }, 3000); // auto-close after 3 seconds
+    }
 
     // payload vars, sent to backend to generate query template and show it
     // also used for template saving
+    const [selectedDatabase, setSelectedDatabase] = useState(""); // hardcoded for now, later can add internal db support
     const [selectedTable, setSelectedTable] = useState("");
     const [rowLimit, setRowLimit] = useState(0);
     const [selectedCols, setSelectedCols] = useState([]);
@@ -31,6 +102,7 @@ export default function Database(){
     const [toggles, setToggles] = useState({}); // { id: bool }
     // selected referenced foreign keys stored per parent FK constraint: { [parentCol]: [fkColumnName] }
     const [selectedRFKs, setSelectedRFKs] = useState({}); // { parentCol: [fkcol, ...] }
+    const [toggleNewDBModal, setToggleNewDBModal] = useState(false);
 
 
     // table data
@@ -54,8 +126,40 @@ export default function Database(){
         }));
     };
 
-    const isToggled = (id) => !!toggles[id]; // helper for readability
+    const isToggled = (id) => !!toggles[id]; // helper for readability\
 
+    function handleNewDatabase($database) {
+        if ($database !== "New Database") {
+            setSelectedDatabase($database);
+            setTableCols([]);
+            setTableData([]);
+            setSelectedCols([]);
+            return
+        }
+        setToggleNewDBModal(true);
+    
+    }
+
+
+    async function getDatabases() {
+        try {
+            const response = await fetch("http://localhost:8000/api/databases/external", {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error(`Status ${response.status}`);
+            const data = await response.json();
+            setDatabases(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error("Failed to fetch databases:", err);
+            setDatabases([]);
+        }
+     }
+     useEffect(() => {
+         if (token) {
+             getDatabases();
+             setSelectedDatabase(""); // default for now, later can add internal db support
+         }
+     }, [token]);
 
     // manage FKSelection: { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
     function handleFKSelection(parentCol, tableName, fkColumn) {
@@ -131,43 +235,45 @@ export default function Database(){
 
   // Fetch tables once when token is available
     useEffect(() => {
-        if (!token) return;
+        if (!token || !selectedDatabase) {
+            setTables([]);
+            return;
+        }
 
         async function fetchTables() {
             try {
-                const resource = await fetch("http://127.0.0.1:8000/api/databases/external/tables", {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: "application/json",
-                }
+                const resource = await fetch(`http://127.0.0.1:8000/api/databases/external/tables?name=${selectedDatabase}`, {
+                    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
                 });
+                if (!resource.ok) throw new Error(`Status ${resource.status}`);
                 const data = await resource.json();
-                setTables(data);
+                console.log("Fetched tables:", data);
+                setTables(Array.isArray(data) ? data : []);
             } catch (err) {
                 console.error("Failed to fetch tables: ", err);
+                setTables([]);
             }
-            }
+        }
         fetchTables();
-    }, [token]);
-
+    }, [token, selectedDatabase]);
     
     //gets the selected table's list of columns 
     useEffect(() => {
         if (!selectedTable) return;
-
+ 
         async function fetchTableColumns() {
             setSelectedCols([]);
             setForeignKeysSelection([]);
             setSelectedRFKs([]);
             setSelectedWhere([]);
             const res = await fetch(
-            `http://127.0.0.1:8000/api/databases/external/tables/${selectedTable}/columns`,
-            { headers: { Authorization: `Bearer ${token}` } }
+                `http://127.0.0.1:8000/api/databases/external/tables/${encodeURIComponent(selectedTable)}/columns?name=${encodeURIComponent(selectedDatabase)}`,
+                { headers: { Authorization: `Bearer ${token}` } }
             );
             const data = await res.json();
             setTableCols(data.columns);
             setForeignKeys(data.foreignKeys);
-            console.log(data.foreignKeys.SYS_TEXT_ID);
+            // console.log("foreignKeys:", data.foreignKeys);
             // console.log(data);
         }
         fetchTableColumns();
@@ -176,10 +282,10 @@ export default function Database(){
 
 
      // Fetch data from selected table from selected columns
-    async function handleFetchTableData() {
-        if (!selectedTable) return;
-        try {
-            // build payload with only present values
+     async function handleFetchTableData() {
+         if (!selectedTable) return;
+         try {
+             // build payload with only present values
             const payload = {};
             if (rowLimit && Number(rowLimit) > 0) payload.limit = Number(rowLimit);
             if (Array.isArray(selectedCols) && selectedCols.length > 0) payload.columns = selectedCols;
@@ -187,16 +293,16 @@ export default function Database(){
             if (Array.isArray(selectedWhere) && selectedWhere.length > 0) payload.where = selectedWhere;
             console.log('fetch table data payload:', payload);
 
-            // make request
-            const resource = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${selectedTable}`, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: 'application/json',
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload), // send payload as JSON
-            });
+            // POST to data endpoint for a specific table and include description as query param
+            const resource = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${encodeURIComponent(selectedTable)}/data?description=${encodeURIComponent(selectedDatabase)}`, {
+                 method: 'POST',
+                 headers: {
+                     Authorization: `Bearer ${token}`,
+                     Accept: 'application/json',
+                     'Content-Type': 'application/json',
+                 },
+                 body: JSON.stringify(payload), // send payload as JSON
+             });
 
             if (!resource.ok) throw new Error(`Error ${resource.status}`);
             const data = await resource.json();
@@ -307,7 +413,7 @@ export default function Database(){
         const payload = {
             name: templateName,
             query: query,
-            database: "Gemini", // hardcoded for now, later can add internal db support
+            database: selectedDatabase, // hardcoded for now, later can add internal db support
             table: selectedTable,
             user_id: user.id,
             UI: UI
@@ -351,19 +457,29 @@ export default function Database(){
                 
                 <div style={{width: "50%", margin: "auto auto 20px auto" }}>
                     <label htmlFor="db">Select Database</label>
-                    <select name="db" id="db" disabled>
-                        <option value="Gemini">Gemini</option>
+                    <select id="db" value={selectedDatabase} onChange={(e) => handleNewDatabase(e.target.value)}>
+                        <option value="">Choose a database</option>
+                        {databases.map((db, index) => (
+                            // backend returns objects like { identifier , name } — support both shapes
+                            <option key={index} value={typeof db === 'string' ? db : (db.description ?? db.name ?? JSON.stringify(db))}>
+                                {typeof db === 'string' ? db : (db.name ?? db.description ?? JSON.stringify(db))}
+                            </option>
+                        ))}
+                        <option value="New Database" style={{ fontWeight: "bold" }}>+New Database</option>
                     </select>
-                    <label htmlFor="table-select">Select a table</label>
-                    <select id="table-select" value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}>
-                        <option value="">Choose a table</option>
-                        {tables.map((t, index) => {
-                            const tableName = Object.values(t)[0];
-                            return (
-                                <option key={index} value={tableName}>{tableName}</option>
-                            )
-                        })}
+                    {Array.isArray(tables) && tables.length > 0 && (
+                        <>
+                            <label htmlFor="table-select">Select a table</label>
+                            <select id="table-select" value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}>
+                                <option value="">Choose a table</option>
+                                {tables.map((t, index) => {
+                                    // support different shapes returned by backend (string or object)
+                                    const tableName = typeof t === 'string' ? t : (Object.values(t)[0] ?? JSON.stringify(t));
+                                    return <option key={index} value={tableName}>{tableName}</option>;
+                         })}
                     </select>
+                        </>
+                    )}
                     
                     
                 </div>
@@ -537,6 +653,50 @@ export default function Database(){
                     </div>
                 )}
             </div>
+
+            {/* Message modal */}
+            <Modal isOpen={isMessageModalOpen} onRequestClose={isMessageModalOpen} contentLabel="Message" className={`message-modal ${messageSuccess ? 'success' : 'error'}`} overlayClassName="none">
+                <div style={{ padding: '1rem' }}>
+                    <p>{message}</p>
+                </div>
+            </Modal>
+
+            <Modal 
+            isOpen={toggleNewDBModal} 
+            onRequestClose={() => setToggleNewDBModal(false)}
+            contentLabel="Create New Database"
+            overlayClassName={"modal-overlay"}
+            className={"newDB-modal"}
+            >
+                <h2>Create New Database</h2>
+                <input type="text" placeholder="Database Name" onChange={(e) => setNewDBName(e.target.value)} />
+                <input type="text" placeholder="Description" onChange={(e) => setNewDBdescription(e.target.value)} /> {/* custom description to distinguish database, easier for users*/}
+                <select name="driver" id="driver" onChange={(e) => setNewDBDriver(e.target.value)}>
+                    <option value="mysql">MySQL</option>
+                    <option value="pgsql">PostgreSQL</option>
+                    <option value="mariadb">MariaDB</option>
+                    <option value="sqlsrv">SQL Server</option>
+                    <option value="sqlite">SQLite</option>
+                </select>
+                <input type="text" placeholder="Host (default: localhost)" onChange={(e) => setNewDBHost(e.target.value)} />
+                <input type="text" placeholder="Port (default: 3306)" onChange={(e) => setNewDBPort(e.target.value)} />
+                <input type="text" placeholder="Username (default: root)" onChange={(e) => setNewDBUsername(e.target.value)} />
+                <input type="password" placeholder="Password" onChange={(e) => setNewDBPassword(e.target.value)} />
+                <br />
+                <button className="use-button" onClick={() => {handleCreateNewDatabase()}}>Create</button>
+                <button className="delete-button" onClick={() => setToggleNewDBModal(false)}>Cancel</button>
+            </Modal>
+
+            <Modal 
+            isOpen={loading} 
+            onRequestClose={() => toggleLoading(false)}
+            contentLabel="Loading"
+            overlayClassName={"modal-overlay"}
+            className={"loading-modal"}
+            >
+                <h2>Loading...</h2>
+                <div className="loader"></div>
+            </Modal>
         </>
     )
 }

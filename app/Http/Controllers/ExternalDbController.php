@@ -4,59 +4,144 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\ExternalDatabase;
 
 class ExternalDbController extends Controller
 {
 
-    
-    public function listTables()
+    // create a new external database configuration
+    public function createExternalDb(Request $request){
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:external_databases,name',
+            'description' => 'nullable|string|max:100',
+            'driver' => 'required|string|in:mysql,pgsql,sqlsrv,sqlite,mariadb',
+            'host' => 'required|string|max:255',
+            'port' => 'nullable|integer',
+            'username' => 'required|string|max:255',
+            'password' => 'nullable|string|max:255',
+        ]);
+
+        $testConfig = [
+            'driver' => $validated['driver'],
+            'host' => $validated['host'],
+            'port' => $validated['port'] ?? 3306,
+            'database' => $validated['name'], // use 'name' as database name
+            'username' => $validated['username'],
+            'password' => $validated['password'],
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+            'engine' => null,
+        ];
+
+        $connName = 'test_external_' . uniqid();
+        config(["database.connections.$connName" => $testConfig]);
+
+        try {
+            DB::connection($connName)->getPdo();
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Could not connect to the database with provided credentials.',
+                'details' => $e->getMessage()
+            ], 422);
+        }
+
+        $externalDb = ExternalDatabase::create($validated);
+
+        return response()->json($externalDb, 201);
+    }
+    // List all configured external databases
+    public function listExternalDbs()
     {
-        $tables = DB::connection('external')->select('SHOW TABLES');
+        $dbs = ExternalDatabase::all();
+        return response()->json($dbs);
+    }
+    /**
+     * Get a DB connection for a given external database identifier.
+     */
+    protected function getExternalConnection($name)
+    {
+        if (!$name) {
+            // fallback to default 'external' connection
+            return response()->json(['error' => 'No database name provided'], 400);
+        }
+        $db = ExternalDatabase::where('name', $name)->first();
+        if (!$db) {
+            abort(404, 'External database not found');
+        }
+        // Create a dynamic connection config
+        $config = [
+            'database' => $db->name,
+            'driver' => $db->driver ?? 'mysql',
+            'host' => $db->host,
+            'port' => $db->port,
+            'username' => $db->username,
+            'password' => $db->password,
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+            'engine' => null,
+        ];
+        // Use a unique connection name per identifier
+        $connName = 'external_' . $db->name;
+        config(["database.connections.$connName" => $config]);
+        return DB::connection($connName);
+    }
+
+    public function listTables(Request $request)
+    {
+        $db = ExternalDatabase::where('name', $request->input('name'))->first();
+        if (!$db) {
+            abort(404, 'External database not found');
+        }
+        $name = $request->input('name');
+        $conn = $this->getExternalConnection($name);
+        $tables = $conn->select('SHOW TABLES');
         return response()->json($tables);
     }
 
     public function getTableData(Request $request, $table)
     {
+        $identifier = $request->input('name');
+        $conn = $this->getExternalConnection($identifier);
+
         $columns    = $request->input('columns', []);
         $limit      = $request->input('limit', 10);
-        // incoming foreign keys selection payload (renamed from 'selection')
         $foreign_keys  = $request->input('foreign_keys', []);
         $whereConds = $request->input('where', []);
-
 
         // validation for table and column names to prevent SQL injection
         $validateIdentifier = function($name) {
             return preg_match('/^[a-zA-Z0-9_]+$/', $name);
         };
 
-    // Prepare main table select columns (qualified with main table name)
-    $selectParts = [];
+        // Prepare main table select columns (qualified with main table name)
+        $selectParts = [];
         if (empty($columns)) {
-            // fetch all columns for the main table and qualify them
-            $dbCols = DB::connection('external')->select(
+            $dbCols = $conn->select(
                 "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
                 [$table]
             );
             $dbCols = array_map(fn($c) => $c->COLUMN_NAME, $dbCols);
-                foreach ($dbCols as $col) {
-                    if (!$validateIdentifier($col)) continue;
-                    $selectParts[] = "`$table`.`$col` as `$col`";
-                }
-        } else {
-            foreach ($columns as $col) {
+            foreach ($dbCols as $col) {
                 if (!$validateIdentifier($col)) continue;
                 $selectParts[] = "`$table`.`$col` as `$col`";
             }
+        } else {
+            foreach ($columns as $col) {
+                if (!$validateIdentifier($col)) continue;
+                $selectParts[] = "`$table`.`$col` as `$col";
+            }
         }
-        $conn = DB::connection('external');
 
-        // build query using query builder so we can append where clauses safely
         $query = $conn->table($table);
 
         // Track aliases per referenced table and per parent column
         $aliasCounter = 0;
-        $aliasMap = []; // refTable => [alias1, alias2, ...]
-        $aliasByParent = []; // parentCol => [refTable => alias]
+        $aliasMap = [];
+        $aliasByParent = [];
 
         if (!empty($foreign_keys) && is_array($foreign_keys)) {
             foreach ($foreign_keys as $sel) {
@@ -106,15 +191,11 @@ class ExternalDbController extends Controller
             }
         }
 
-        // finalize select list and execute
         $query->selectRaw(implode(', ', $selectParts));
 
-        // apply WHERE payload (array of {column, operator, value} or [column, operator, value])
         if (!empty($whereConds) && is_array($whereConds)) {
             foreach ($whereConds as $wc) {
-                // normalize
                 if (is_array($wc) && array_values($wc) === $wc) {
-                    // numeric-array: [col, op, val]
                     $col = $wc[0] ?? null;
                     $op = strtoupper($wc[1] ?? '=');
                     $val = $wc[2] ?? null;
@@ -127,7 +208,6 @@ class ExternalDbController extends Controller
                 }
                 if (!$col) continue;
 
-                // resolve column to qualified identifier
                 $qualified = null;
                 if (str_contains($col, '.')) {
                     [$tbl, $cname] = explode('.', $col, 2);
@@ -136,25 +216,20 @@ class ExternalDbController extends Controller
                     } elseif (isset($aliasMap[$tbl]) && count($aliasMap[$tbl]) === 1) {
                         $qualified = "{$aliasMap[$tbl][0]}.{$cname}";
                     } elseif (isset($aliasMap[$tbl]) && count($aliasMap[$tbl]) > 1) {
-                        // ambiguous: multiple aliases exist for this referenced table. pick the first.
                         $qualified = "{$aliasMap[$tbl][0]}.{$cname}";
                     } else {
-                        // no join for this referenced table; treat as main table column fallback
                         $qualified = "{$table}.{$cname}";
                     }
                 } else {
-                    // main table column
                     $qualified = "{$table}.{$col}";
                 }
 
-                // apply operator
                 if ($op === 'IS NULL') {
                     $query->whereNull($qualified);
                 } elseif ($op === 'IS NOT NULL') {
                     $query->whereNotNull($qualified);
                 } elseif (in_array($op, ['IN', 'NOT IN'])) {
                     if (!is_array($val)) {
-                        // try to parse comma-separated
                         $val = is_string($val) ? array_map('trim', explode(',', $val)) : [$val];
                     }
                     if ($op === 'IN') $query->whereIn($qualified, $val);
@@ -165,65 +240,49 @@ class ExternalDbController extends Controller
             }
         }
 
-        // limit and execute
         $limit = intval($limit) > 0 ? intval($limit) : 10;
         $results = $query->limit($limit)->get();
 
         return response()->json(['rows' => $results]);
-
-        // $rows = DB::connection('external')
-        //     ->table($table)
-        //     ->select($columns)
-        //     ->limit($limit)
-        //     ->get();
-
-        // if ($foreignKeys != "") {
-        //     return response()->json([
-        //     'rows' => $rows,
-        //     'foreignKeys' => $foreignKeys
-        // ]);} else {
-        //     return response()->json([
-        //         'rows' => $rows
-        //     ]);
-        // }
-        
     }
 
-public function getTableColumns($table)
-{
-    $columns = DB::connection('external')->getSchemaBuilder()->getColumnListing($table);
+    public function getTableColumns(Request $request, $table)
+    {
+        $identifier = $request->input('name');
+        $conn = $this->getExternalConnection(strtolower($identifier));
 
-    // Get all the constraints (foreign keys) from the table
-    $foreignKeys = DB::connection('external')
-        ->select("
-            SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
-            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
-            WHERE TABLE_SCHEMA = DATABASE() 
-              AND TABLE_NAME = ? 
-              AND REFERENCED_TABLE_NAME IS NOT NULL
-        ", [$table]);
-
-    $formattedForeignKeys = [];
-    foreach ($foreignKeys as $fk) {
-        $fkInfo = [
-            'constraint_name' => $fk->CONSTRAINT_NAME,
-            'column_name' => $fk->COLUMN_NAME,
-            'referenced_table' => $fk->REFERENCED_TABLE_NAME,
-            'referenced_column' => $fk->REFERENCED_COLUMN_NAME,
-            'referenced_table_columns' => []
-        ];
-
-        // If the foreign key column exists in the fetched columns, get columns from referenced table
-        if (in_array($fk->COLUMN_NAME, $columns)) {
-            $fkInfo['referenced_table_columns'] = DB::connection('external')->getSchemaBuilder()->getColumnListing($fk->REFERENCED_TABLE_NAME);
+        // Check if $conn is a DB connection, not a JsonResponse
+        if ($conn instanceof \Illuminate\Http\JsonResponse) {
+            return $conn;
         }
 
-        $formattedForeignKeys[$fk->COLUMN_NAME] = $fkInfo;
-    }
+        $columns = $conn->getSchemaBuilder()->getColumnListing($table);
 
-    return response()->json([
-        'columns' => $columns,
-        'foreignKeys' => $formattedForeignKeys
-    ]);
-}
+        $foreignKeys = $conn->select(
+            "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL",
+            [$table]
+        );
+
+        $formattedForeignKeys = [];
+        foreach ($foreignKeys as $fk) {
+            $fkInfo = [
+                'constraint_name' => $fk->CONSTRAINT_NAME,
+                'column_name' => $fk->COLUMN_NAME,
+                'referenced_table' => $fk->REFERENCED_TABLE_NAME,
+                'referenced_column' => $fk->REFERENCED_COLUMN_NAME,
+                'referenced_table_columns' => []
+            ];
+
+            if (in_array($fk->COLUMN_NAME, $columns)) {
+                $fkInfo['referenced_table_columns'] = $conn->getSchemaBuilder()->getColumnListing($fk->REFERENCED_TABLE_NAME);
+            }
+
+            $formattedForeignKeys[$fk->COLUMN_NAME] = $fkInfo;
+        }
+
+        return response()->json([
+            'columns' => $columns,
+            'foreignKeys' => $formattedForeignKeys
+        ]);
+    }
 }

@@ -640,6 +640,46 @@ h6{
   box-shadow: 0 0 15px #68ff22;
 }
 
+
+.newDB-modal{
+  margin-top: 50px;
+  font-size: large;
+  position: fixed;
+  max-height: 80%;
+  top: 50%;
+  left: 50%;
+  width: 30%;
+  max-width: 100%;
+  height: fit-content;
+  padding: 0.2rem 1rem 1rem 1rem;
+  transform: translate(-50%, -50%);
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  z-index: 1000;
+  background-color: #242424;
+  animation: fadeIn 0.3s ease-out forwards;
+  transition: backdrop-filter 0.3s ease-out;
+  border: #ffffff 2px solid;
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.newDB-modal input[type="text"], .newDB-modal select{
+  margin: auto auto 1rem auto;
+  padding: 0.5rem;
+  border: 1px solid #cbd5e1; /* Slate-300 */
+  border-radius: 0.375rem;
+  background-color: #424242;
+  color: #ffffff; /* Slate-900 */
+  font-size: 1rem;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.newDB-modal button{
+  margin: 0.5rem;
+  padding: 0.5rem 1rem;}
+
 .columns-count{
   text-decoration: underline;
   text-shadow: 0 0 5px #ffffff;
@@ -650,4 +690,25 @@ h6{
   cursor: help;
   font-size: 1.1em;
   text-shadow: 0 0 10px #ffffff, 0 0 20px #ffffff;
+}
+
+.loading-modal{
+  font-size: large;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: fit-content;
+  max-width: 70%;
+  height: fit-content;
+  max-height: 80%;
+  padding: 1rem 1rem 1rem 1rem;
+  transform: translate(-50%, -50%);
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  background-color: #242424;
+  animation: fadeIn 0.3s ease-out forwards;
+  transition: backdrop-filter 0.3s ease-out;
+  border: #ffffff 2px solid;
+  border-radius: 8px;
 }

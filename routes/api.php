@@ -19,6 +19,8 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanc
 use App\Http\Controllers\ExternalDbController;
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/databases/external', [ExternalDbController::class, 'listExternalDbs']);
+    Route::post('/databases/external', [ExternalDbController::class, 'createExternalDb']);
     Route::get('/databases/external/tables', [ExternalDbController::class, 'listTables']);
     Route::post('/databases/external/tables/{table}', [ExternalDbController::class, 'getTableData']);
     Route::get('/databases/external/tables/{table}/columns', [ExternalDbController::class, 'getTableColumns']);
