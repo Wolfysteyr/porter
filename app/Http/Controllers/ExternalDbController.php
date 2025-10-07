@@ -19,7 +19,8 @@ class ExternalDbController extends Controller
     {
         $columns    = $request->input('columns', []);
         $limit      = $request->input('limit', 10);
-        $selection  = $request->input('selection', []);
+        // incoming foreign keys selection payload (renamed from 'selection')
+        $foreign_keys  = $request->input('foreign_keys', []);
         $whereConds = $request->input('where', []);
 
 
@@ -57,8 +58,8 @@ class ExternalDbController extends Controller
         $aliasMap = []; // refTable => [alias1, alias2, ...]
         $aliasByParent = []; // parentCol => [refTable => alias]
 
-        if (!empty($selection) && is_array($selection)) {
-            foreach ($selection as $sel) {
+        if (!empty($foreign_keys) && is_array($foreign_keys)) {
+            foreach ($foreign_keys as $sel) {
                 $parentCol = $sel['parentCol'] ?? null;
                 if (!$parentCol || !$validateIdentifier($parentCol)) continue;
 
@@ -206,7 +207,7 @@ public function getTableColumns($table)
     foreach ($foreignKeys as $fk) {
         $fkInfo = [
             'constraint_name' => $fk->CONSTRAINT_NAME,
-            'column' => $fk->COLUMN_NAME,
+            'column_name' => $fk->COLUMN_NAME,
             'referenced_table' => $fk->REFERENCED_TABLE_NAME,
             'referenced_column' => $fk->REFERENCED_COLUMN_NAME,
             'referenced_table_columns' => []

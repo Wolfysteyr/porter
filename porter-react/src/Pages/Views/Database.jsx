@@ -25,7 +25,7 @@ export default function Database(){
     const [rowLimit, setRowLimit] = useState(0);
     const [selectedCols, setSelectedCols] = useState([]);
     const [selectedWhere, setSelectedWhere] = useState([]);
-    const [FKSelection, setFKSelection] = useState([]); // { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
+    const [foreignKeysSelection, setForeignKeysSelection] = useState([]); // { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
 
     // used for toggling visibility of various sections, also part of template
     const [toggles, setToggles] = useState({}); // { id: bool }
@@ -79,7 +79,7 @@ export default function Database(){
         });
 
 
-        setFKSelection((prev) => {
+        setForeignKeysSelection((prev) => {
             // deep-copy prev structure (shallow copies are enough for our nested arrays/objects)
             const copy = prev.map(p => ({
                 parentCol: p.parentCol,
@@ -157,7 +157,7 @@ export default function Database(){
 
         async function fetchTableColumns() {
             setSelectedCols([]);
-            setFKSelection([]);
+            setForeignKeysSelection([]);
             setSelectedRFKs([]);
             setSelectedWhere([]);
             const res = await fetch(
@@ -183,7 +183,7 @@ export default function Database(){
             const payload = {};
             if (rowLimit && Number(rowLimit) > 0) payload.limit = Number(rowLimit);
             if (Array.isArray(selectedCols) && selectedCols.length > 0) payload.columns = selectedCols;
-            if (Array.isArray(FKSelection) && FKSelection.length > 0) payload.selection = FKSelection;
+            if (Array.isArray(foreignKeysSelection) && foreignKeysSelection.length > 0) payload.foreign_keys = foreignKeysSelection;
             if (Array.isArray(selectedWhere) && selectedWhere.length > 0) payload.where = selectedWhere;
             console.log('fetch table data payload:', payload);
 
@@ -284,7 +284,6 @@ export default function Database(){
     const handleSaveTemplate = () => {
         const templateName = document.getElementById("templateName").value;
         
-        
         // Save the template (you'll need to implement this)
         console.log("Saving template:", templateName);
         setTemplateNameErr(false);
@@ -292,7 +291,7 @@ export default function Database(){
         let query = {};
 
         if (Array.isArray(selectedCols) && selectedCols.length > 0) query.columns = selectedCols;
-        if (Array.isArray(FKSelection) && FKSelection.length > 0) query.selection = FKSelection;
+        if (Array.isArray(foreignKeysSelection) && foreignKeysSelection.length > 0) query.foreign_keys = foreignKeysSelection;
         if (Array.isArray(selectedWhere) && selectedWhere.length > 0) query.where = selectedWhere;
         if (Object.keys(query).length === 0) {
            query.columns = ["*"];
@@ -308,7 +307,7 @@ export default function Database(){
         const payload = {
             name: templateName,
             query: query,
-            database: "Gemeni", // hardcoded for now, later can add internal db support
+            database: "Gemini", // hardcoded for now, later can add internal db support
             table: selectedTable,
             user_id: user.id,
             UI: UI

@@ -13,6 +13,32 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+.loader {
+    width: 48px;
+    height: 48px;
+    border: 5px solid #FFF;
+    border-bottom-color: #FF3D00;
+    border-radius: 50%;
+    display: inline-block;
+    box-sizing: border-box;
+    animation: rotation 1s linear infinite;
+    }
+
+    @keyframes rotation {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+    } 
+
+
+
+  .hidden {
+    display: none;
+  }
+
 a {
   font-weight: 500;
   color: #646cff;
@@ -405,7 +431,6 @@ h6{
   display: grid;                  /* <-- changed from flex */
   grid-template-columns: minmax(180px, 1fr) 140px 120px 140px 160px 110px;
   gap: 0.5rem;
-  cursor: pointer;
 
   /* remove max-height so content doesn't get clipped/misaligned */
 }
@@ -460,6 +485,16 @@ h6{
   align-items: center;
 }
 
+.use-button {
+  background-color: #047d04; /* Green */
+  color: white;
+  border: none;
+  padding: 0.5rem 0.9rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: transform 0.3s, box-shadow 0.3s, background-color 0.3s;
+  margin-left: 0.5rem; 
+}
 
 .edit-button {
   background-color: #b36d04; /* orang */
@@ -480,6 +515,11 @@ h6{
   border-radius: 5px;
   cursor: pointer;
   transition: transform 0.3s, box-shadow 0.3s, background-color 0.3s;
+}
+
+.use-button:hover {
+  box-shadow: 0 0 10px #04b304;
+  transform: scale(1.05);
 }
 
  .delete-button:hover {
@@ -598,4 +638,16 @@ h6{
 .message-modal.success{
   background-color: #114b00;
   box-shadow: 0 0 15px #68ff22;
+}
+
+.columns-count{
+  text-decoration: underline;
+  text-shadow: 0 0 5px #ffffff;
+  transition: font-size 0.3s, text-shadow 0.3s;
+}
+
+.columns-count:hover{
+  cursor: help;
+  font-size: 1.1em;
+  text-shadow: 0 0 10px #ffffff, 0 0 20px #ffffff;
 }

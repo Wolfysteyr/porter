@@ -42,7 +42,7 @@ export default function Templates() {
     const [editTables, setEditTables] = useState([]);
     const [editSelectedTable, setEditSelectedTable] = useState('');
     const [editTableCols, setEditTableCols] = useState([]);
-    const [editForeignKeys, setEditForeignKeys] = useState([]);
+    const [editForeignKeys, setEditForeignKeys] = useState([]); // same shape as Database.jsx
     const [editRowLimit, setEditRowLimit] = useState(0);
     const [editSelectedCols, setEditSelectedCols] = useState([]);
     const [editSelectedWhere, setEditSelectedWhere] = useState([]);
@@ -157,7 +157,7 @@ export default function Templates() {
             return copy;
         });
 
-        setEditFKSelection((prev) => {
+        setEditForeignKeys((prev) => {
             const copy = prev.map(p => ({
                 parentCol: p.parentCol,
                 fkTables: p.fkTables.map(t => ({ tableName: t.tableName, fkColumns: [...t.fkColumns] }))
@@ -248,7 +248,7 @@ export default function Templates() {
         
         if (editRowLimit && Number(editRowLimit) > 0) query.limit = Number(editRowLimit);
         if (Array.isArray(editSelectedCols) && editSelectedCols.length > 0) query.columns = editSelectedCols;
-        if (Array.isArray(editFKSelection) && editFKSelection.length > 0) query.selection = editFKSelection;
+        if (Array.isArray(editForeignKeys) && editForeignKeys.length > 0) query.foreign_keys = editForeignKeys;
         if (Array.isArray(editSelectedWhere) && editSelectedWhere.length > 0) query.where = editSelectedWhere;
         if (Object.keys(query).length === 0) query.columns = ["*"];
 
@@ -336,6 +336,7 @@ export default function Templates() {
 
     function handleUseTemplate(template) {
         navigate('/export', { state: { template } });
+        console.log("Using template:", template);
     }
 
     return (
@@ -356,15 +357,16 @@ export default function Templates() {
                             <span className='template-actions'>Actions</span>
                         </li>
                          {templates.map(template => (
-                             <li className='template-item' key={template.id} title='Click to use template' onClick={() => handleUseTemplate(template)}>
-                                 <span className='template-name'>{template.name}</span>
+                             <li className='template-item' key={template.id}>
+                                <span className='template-name'>{template.name}</span>
                                  <span className='template-db'>{template.database}</span>
                                  <span className='template-table'>{template.table}</span>
                                  <span className='template-created-at'>{new Date(template.created_at).toLocaleDateString()}</span>
                                  <span className='template-updated-at'>{new Date(template.updated_at).toLocaleDateString()}</span>
                                  <div className='template-actions'>
-                                     <button onClick={() => handleEdit(template.id)} className='edit-button'>Edit</button>
-                                     <button onClick={() => openDeleteModal(template)} className='delete-button'>X</button>
+                                    <button onClick={() => handleUseTemplate(template)}  title='Click to use template'  className='use-button'>Use</button>
+                                     <button onClick={() => handleEdit(template.id)} title='Click to edit template' className='edit-button'>Edit</button>
+                                     <button onClick={() => openDeleteModal(template)} title='Click to delete template' className='delete-button'>X</button>
                                  </div>
                              </li>
                          ))}
