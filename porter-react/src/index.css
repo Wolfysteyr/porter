@@ -405,6 +405,8 @@ h6{
   display: grid;                  /* <-- changed from flex */
   grid-template-columns: minmax(180px, 1fr) 140px 120px 140px 160px 110px;
   gap: 0.5rem;
+  cursor: pointer;
+
   /* remove max-height so content doesn't get clipped/misaligned */
 }
 

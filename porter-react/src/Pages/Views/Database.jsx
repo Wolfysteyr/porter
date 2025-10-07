@@ -291,7 +291,6 @@ export default function Database(){
 
         let query = {};
 
-        if (rowLimit && Number(rowLimit) > 0) query.limit = Number(rowLimit);
         if (Array.isArray(selectedCols) && selectedCols.length > 0) query.columns = selectedCols;
         if (Array.isArray(FKSelection) && FKSelection.length > 0) query.selection = FKSelection;
         if (Array.isArray(selectedWhere) && selectedWhere.length > 0) query.where = selectedWhere;
@@ -380,7 +379,7 @@ export default function Database(){
                                     {/* List of columns with checkboxes */}
                                     {tableCols.map((col) => {
                                         // Find the foreign key object for this column, if any
-                                        const fk = Object.values(foreignKeys).find(fk => fk.constraint_name === col);
+                                        const fk = Object.values(foreignKeys).find(fk => fk.column_name === col);
                                         return (
                                             <div key={col} className="column-item">
                                                 <label>
@@ -415,8 +414,8 @@ export default function Database(){
                                                                         <label>
                                                                             <input
                                                                                 type="checkbox"
-                                                                                checked={Array.isArray(selectedRFKs[fk.constraint_name]) && selectedRFKs[fk.constraint_name].includes(fkcol)}
-                                                                                onChange={() => handleFKSelection(fk.constraint_name, fk.referenced_table, fkcol)}
+                                                                                checked={Array.isArray(selectedRFKs[fk.column_name]) && selectedRFKs[fk.column_name].includes(fkcol)}
+                                                                                onChange={() => handleFKSelection(fk.column_name, fk.referenced_table, fkcol)}
                                                                             />
                                                                             {fkcol}
                                                                         </label>

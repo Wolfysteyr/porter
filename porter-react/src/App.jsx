@@ -5,6 +5,7 @@ import Login from "./Pages/Auth/Login";
 import Register from "./Pages/Auth/Register.jsx";
 import Database from "./Pages/Views/Database.jsx";
 import Templates from "./Pages/Views/Templates.jsx";
+import Export from "./Pages/Views/Export.jsx";
 
 import './App.css'
 import { useContext } from "react";
@@ -22,6 +23,7 @@ function App() {
         <Route path="/register" element={ user ? <Home/> : <Register/>}/>
         <Route path="/tqb" element={user ? <Database/> : <Login/>}/>
         <Route path="/templates" element={user ? <Templates/> : <Login/>}/>
+        <Route path="/export" element={user ? <Export/> : <Login/>}/>
 
       </Route>
     </Routes>

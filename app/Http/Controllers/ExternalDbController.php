@@ -206,6 +206,7 @@ public function getTableColumns($table)
     foreach ($foreignKeys as $fk) {
         $fkInfo = [
             'constraint_name' => $fk->CONSTRAINT_NAME,
+            'column' => $fk->COLUMN_NAME,
             'referenced_table' => $fk->REFERENCED_TABLE_NAME,
             'referenced_column' => $fk->REFERENCED_COLUMN_NAME,
             'referenced_table_columns' => []

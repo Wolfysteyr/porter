@@ -334,6 +334,10 @@ export default function Templates() {
         openEditModal(t);
     }
 
+    function handleUseTemplate(template) {
+        navigate('/export', { state: { template } });
+    }
+
     return (
         <>
             <h1 className='title'>Query Templates</h1>
@@ -352,7 +356,7 @@ export default function Templates() {
                             <span className='template-actions'>Actions</span>
                         </li>
                          {templates.map(template => (
-                             <li className='template-item' key={template.id}>
+                             <li className='template-item' key={template.id} title='Click to use template' onClick={() => handleUseTemplate(template)}>
                                  <span className='template-name'>{template.name}</span>
                                  <span className='template-db'>{template.database}</span>
                                  <span className='template-table'>{template.table}</span>
