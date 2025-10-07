@@ -287,6 +287,7 @@ export default function Database(){
          try {
              // build payload with only present values
             const payload = {};
+            if (selectedDatabase) payload.name = selectedDatabase;
             if (rowLimit && Number(rowLimit) > 0) payload.limit = Number(rowLimit);
             if (Array.isArray(selectedCols) && selectedCols.length > 0) payload.columns = selectedCols;
             if (Array.isArray(foreignKeysSelection) && foreignKeysSelection.length > 0) payload.foreign_keys = foreignKeysSelection;
@@ -294,7 +295,7 @@ export default function Database(){
             console.log('fetch table data payload:', payload);
 
             // POST to data endpoint for a specific table and include description as query param
-            const resource = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${encodeURIComponent(selectedTable)}/data?description=${encodeURIComponent(selectedDatabase)}`, {
+            const resource = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${selectedTable}`, {
                  method: 'POST',
                  headers: {
                      Authorization: `Bearer ${token}`,
@@ -694,7 +695,6 @@ export default function Database(){
             overlayClassName={"modal-overlay"}
             className={"loading-modal"}
             >
-                <h2>Loading...</h2>
                 <div className="loader"></div>
             </Modal>
         </>

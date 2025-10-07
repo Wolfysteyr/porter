@@ -706,9 +706,47 @@ h6{
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  background-color: #242424;
   animation: fadeIn 0.3s ease-out forwards;
   transition: backdrop-filter 0.3s ease-out;
-  border: #ffffff 2px solid;
-  border-radius: 8px;
+}
+
+.export-container{
+  display: flex;
+  justify-content: center;
+}
+
+.export-container .export-rules{
+  margin: auto 1rem;
+  padding: 1rem;
+  animation: slidefromright 0.6s cubic-bezier(.4,2,.3,1) forwards;
+}
+
+.export-container .export-template{
+  margin: auto 1rem;
+  padding: 1rem;
+  transition: position 0.3s cubic-bezier(.4,2,.3,1);
+}
+
+.export-container.with-rules .export-template {
+  /* Slide left when rules appear */
+  transform: translateX(-80px);
+  transition-delay: 0.6s;
+  transition: transform 0.6s cubic-bezier(.4,2,.3,1);
+}
+
+.export-container .export-template {
+  /* Default position */
+  transform: translateX(0);
+  transition: transform 0.6s cubic-bezier(.4,2,.3,1);
+} 
+
+@keyframes slidefromright {
+  0% {
+    transform: scaleX(0);
+    transform-origin: right center;
+  }
+  100% {
+    transform: scaleX(1);
+    transform-origin: right center;
+  }
 }

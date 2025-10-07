@@ -89,7 +89,7 @@ export default function Templates() {
         if (!token) return;
         async function fetchTables(){
             try {
-                const r = await fetch("http://127.0.0.1:8000/api/databases/external/tables", {
+                const r = await fetch(`http://127.0.0.1:8000/api/databases/external/tables?name=Gemini`, {
                     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
                 });
                 const d = await r.json();
@@ -119,7 +119,7 @@ export default function Templates() {
         setEditSelectedTable(t);
         if (t) {
             try {
-                const res = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${t}/columns`, {
+                const res = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${t}`, {
                     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
                 });
                 const data = await res.json();
@@ -132,7 +132,6 @@ export default function Templates() {
             setEditTableCols([]);
             setEditForeignKeys([]);
         }
-
         setIsEditModalOpen(true);
     }
 
@@ -225,7 +224,7 @@ export default function Templates() {
         let cancelled = false;
         async function fetchCols(){
             try {
-                const r = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${editSelectedTable}/columns`, {
+                const r = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${editSelectedTable}/columns?name=Gemini`, {
                     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
                 });
                 const d = await r.json();
@@ -422,7 +421,8 @@ export default function Templates() {
                         <select id="table-select" value={editSelectedTable} onChange={(e) => setEditSelectedTable(e.target.value)}>
                             <option value="">Choose a table</option>
                             {editTables.map((t, index) => {
-                                const tableName = Object.values(t)[0];
+                                // Support both string and object shapes
+                                const tableName = typeof t === 'string' ? t : (Object.values(t)[0] ?? JSON.stringify(t));
                                 return (
                                     <option key={index} value={tableName}>{tableName}</option>
                                 )

@@ -285,4 +285,173 @@ class ExternalDbController extends Controller
             'foreignKeys' => $formattedForeignKeys
         ]);
     }
+    // exports the data from an external database table to a CSV file
+    public function exportData(Request $request) {
+        $database = $request->input('database');
+        $table = $request->input('table');
+        $columns = $request->input('query.columns', []);
+        $limit = $request->input('limit', 1000); // default limit for export
+        $foreign_keys = $request->input('query.foreign_keys', []);
+        $whereConds = $request->input('query.where', []);
+
+        $conn = $this->getExternalConnection($database);
+        if ($conn instanceof \Illuminate\Http\JsonResponse) {
+            return $conn;
+        }
+
+        // validation for table and column names to prevent SQL injection
+        $validateIdentifier = function($name) {
+            return preg_match('/^[a-zA-Z0-9_]+$/', $name);
+        };
+
+        // Prepare main table select columns (qualified with main table name)
+        $selectParts = [];
+        if (empty($columns)) {
+            $dbCols = $conn->select(
+                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
+                [$table]
+            );
+            $dbCols = array_map(fn($c) => $c->COLUMN_NAME, $dbCols);
+            foreach ($dbCols as $col) {
+                if (!$validateIdentifier($col)) continue;
+                $selectParts[] = "`$table`.`$col` as `$col`";
+            }
+        } else {
+            foreach ($columns as $col) {
+                if (!$validateIdentifier($col)) continue;
+                $selectParts[] = "`$table`.`$col` as `$col`";
+            }
+        }
+
+        $query = $conn->table($table);
+
+        // Track aliases per referenced table and per parent column
+        $aliasCounter = 0;
+        $aliasMap = [];
+        $aliasByParent = [];
+
+        if (!empty($foreign_keys) && is_array($foreign_keys)) {
+            foreach ($foreign_keys as $sel) {
+                $parentCol = $sel['parentCol'] ?? null;
+                if (!$parentCol || !$validateIdentifier($parentCol)) continue;
+
+                $fkTables = $sel['fkTables'] ?? [];
+                if (!is_array($fkTables)) continue;
+
+                foreach ($fkTables as $fkTable) {
+                    $refTable = $fkTable['tableName'] ?? null;
+                    if (!$refTable || !$validateIdentifier($refTable)) continue;
+
+                    $fkCols = $fkTable['fkColumns'] ?? [];
+                    if (!is_array($fkCols) || empty($fkCols)) continue;
+
+                    // determine referenced column name
+                    $refInfo = $conn->select(
+                        "SELECT REFERENCED_COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME = ? LIMIT 1",
+                        [$table, $parentCol, $refTable]
+                    );
+                    $refCol = $refInfo[0]->REFERENCED_COLUMN_NAME ?? null;
+                    if (!$refCol || !$validateIdentifier($refCol)) {
+                        $refInfo = $conn->select(
+                            "SELECT REFERENCED_COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1",
+                            [$table, $parentCol]
+                        );
+                        $refCol = $refInfo[0]->REFERENCED_COLUMN_NAME ?? null;
+                    }
+                    if (!$refCol || !$validateIdentifier($refCol)) continue;
+
+                    // create unique alias
+                    $alias = preg_replace('/[^A-Za-z0-9_]/', '_', $refTable) . '_' . $aliasCounter++;
+                    $aliasMap[$refTable][] = $alias;
+                    $aliasByParent[$parentCol][$refTable] = $alias;
+
+                    // add join
+                    $query->leftJoin("{$refTable} as {$alias}", "{$table}.{$parentCol}", '=', "{$alias}.{$refCol}");
+
+                    // add referenced columns to selects
+                    foreach ($fkCols as $fkCol) {
+                        if (!$validateIdentifier($fkCol)) continue;
+                        $aliasCol = $alias . '__' . $fkCol;
+                        $selectParts[] = "`{$alias}`.`{$fkCol}` as `{$aliasCol}`";
+                    }
+                }
+            }
+        }
+
+        $query->selectRaw(implode(', ', $selectParts));
+
+        if (!empty($whereConds) && is_array($whereConds)) {
+            foreach ($whereConds as $wc) {
+                if (is_array($wc) && array_values($wc) === $wc) {
+                    $col = $wc[0] ?? null;
+                    $op = strtoupper($wc[1] ?? '=');
+                    $val = $wc[2] ?? null;
+                } elseif (is_array($wc)) {
+                    $col = $wc['column'] ?? null;
+                    $op = strtoupper($wc['operator'] ?? '=');
+                    $val = $wc['value'] ?? null;
+                } else {
+                    continue;
+                }
+                if (!$col) continue;
+
+                $qualified = null;
+                if (str_contains($col, '.')) {
+                    [$tbl, $cname] = explode('.', $col, 2);
+                    if ($tbl === $table) {
+                        $qualified = "{$table}.{$cname}";
+                    } elseif (isset($aliasMap[$tbl]) && count($aliasMap[$tbl]) === 1) {
+                        $qualified = "{$aliasMap[$tbl][0]}.{$cname}";
+                    } elseif (isset($aliasMap[$tbl]) && count($aliasMap[$tbl]) > 1) {
+                        $qualified = "{$aliasMap[$tbl][0]}.{$cname}";
+                    } else {
+                        $qualified = "{$table}.{$cname}";
+                    }
+                } else {
+                    $qualified = "{$table}.{$col}";
+                }
+
+                if ($op === 'IS NULL') {
+                    $query->whereNull($qualified);
+                } elseif ($op === 'IS NOT NULL') {
+                    $query->whereNotNull($qualified);
+                } elseif (in_array($op, ['IN', 'NOT IN'])) {
+                    if (!is_array($val)) {
+                        $val = is_string($val) ? array_map('trim', explode(',', $val)) : [$val];
+                    }
+                    if ($op === 'IN') $query->whereIn($qualified, $val);
+                    else $query->whereNotIn($qualified, $val);
+                } else {
+                    $query->where($qualified, $op, $val);
+                }
+            }
+        }
+
+        $limit = intval($limit) > 0 ? intval($limit) : 1000;
+        $results = $query->limit($limit)->get();
+
+        // Prepare CSV
+        $csv = '';
+        if (count($results) > 0) {
+            $header = array_keys((array)$results[0]);
+            $csv .= implode(';', $header) . "\n"; // <-- use semicolon
+            foreach ($results as $row) {
+                $csv .= implode(';', array_map(function($v) {
+                    $v = str_replace('"', '""', $v);
+                    if (strpos($v, ';') !== false || strpos($v, '"') !== false || strpos($v, "\n") !== false) {
+                        return "\"$v\"";
+                    }
+                    return $v;
+                }, (array)$row)) . "\n";
+            }
+        } else {
+            // Optionally, output header only if you know the columns
+            // $csv .= implode(';', $header) . "\n";
+        }
+
+        $filename = $table . '_export_' . date('Ymd_His') . '.csv';
+        return response($csv)
+            ->header('Content-Type', 'text/csv')
+            ->header('Content-Disposition', "attachment; filename=\"$filename\"");
+    }
 }

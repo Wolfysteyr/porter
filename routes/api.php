@@ -24,6 +24,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/databases/external/tables', [ExternalDbController::class, 'listTables']);
     Route::post('/databases/external/tables/{table}', [ExternalDbController::class, 'getTableData']);
     Route::get('/databases/external/tables/{table}/columns', [ExternalDbController::class, 'getTableColumns']);
+    Route::post('/databases/external/export', [ExternalDbController::class, 'exportData']);
 });
 
 // QueryTemplate routes
