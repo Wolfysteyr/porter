@@ -1,15 +1,18 @@
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import {Link, Outlet, useNavigate} from "react-router-dom";
 import { AppContext } from "../Context/AppContext";
+
 
 export default function Layout(){
 
     const {user, token, setUser, setToken} = useContext(AppContext);
     const navigate = useNavigate();
+    const [menuVisible, setMenuVisible] = useState(0);
 
     async function handleLogout(e){
         e.preventDefault();
 
+        toggleMenu();
         const res = await fetch('/api/logout', {
             method: 'post',
             headers: {
@@ -26,8 +29,14 @@ export default function Layout(){
             localStorage.removeItem('token');
             navigate('/')
         }
+    }
 
-
+    function toggleMenu(){
+        if (menuVisible === 1){
+            setMenuVisible(2);
+        } else {
+            setMenuVisible(1);
+        }
     }
 
     return (
@@ -47,12 +56,24 @@ export default function Layout(){
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <p>
                                 {user.name}
+                                {user.admin === 1 && 
+                            ( <>
+                                <br />
+                                <span style={{ fontSize: '0.7rem', color: '#ddddddff', backgroundColor: '#4d4d4dff', border: '1px solid #999999ff', padding: '0.2em 0.4em', borderRadius: '0.5em' }}>Admin</span>
+                            </>)}
                             </p>
-                                <button onClick={handleLogout}className="nav-link">Logout</button>
+                            <div className={`bars ${menuVisible === 1 ? 'active' : ''}`} onClick={toggleMenu}>
+                                     <div className="bar1"></div>
+                                    <div className="bar2"></div>
+                                    <div className="bar3"></div>
+                                </div>
+                            <div className={`logout-container ${menuVisible === 1 ? 'active' : menuVisible === 2 ? 'closing' : ''}`}>
+                                {user.admin === 1 && <Link to="/register" onClick={toggleMenu} className="nav-link">Register a new account</Link>}
+                                <Link className="nav-link" onClick={handleLogout} style={{ cursor: 'pointer' }}>Logout</Link>
+                            </div>
                         </div> 
                     ) : (
                         <div>
-                        <Link to="/register" className="nav-link">Register</Link>
                         <Link to="/login" className="nav-link">Login</Link>
                         </div>
                     )

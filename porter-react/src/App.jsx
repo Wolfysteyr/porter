@@ -20,7 +20,7 @@ function App() {
       <Route path="/" element={<Layout/>}>
         <Route index element={<Home/>}/>
         <Route path="/login" element={ user ? <Home/> : <Login/>}/> 
-        <Route path="/register" element={ user ? <Home/> : <Register/>}/>
+  <Route path="/register" element={ (user && user.admin === 1) ? <Register/> : <Home/> }/>
         <Route path="/tqb" element={user ? <Database/> : <Login/>}/>
         <Route path="/templates" element={user ? <Templates/> : <Login/>}/>
         <Route path="/export" element={user ? <Export/> : <Login/>}/>

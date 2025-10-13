@@ -344,11 +344,14 @@ export default function Templates() {
         console.log("Using template:", template);
     }
 
+    // Templates visible to current user (admins see all)
+    const visibleTemplates = templates.filter(t => (user?.admin === 1) || (t.user_id === user?.id));
+
     return (
         <>
             <h1 className='title'>Query Templates</h1>
             <div className='main-div'>
-                {templates.length === 0 ? (
+                {visibleTemplates.length === 0 ? (
                     <p>No templates found.</p>
                 ) : (
                     <ul className='template-list'>
@@ -361,23 +364,23 @@ export default function Templates() {
                             <span className='template-updated-at' style={{minWidth: '140px'}}>Last Updated</span>
                             <span className='template-actions'>Actions</span>
                         </li>
-                         {templates.map(template => (
-                             <li className='template-item' key={template.id}>
+                        {visibleTemplates.map(template => (
+                            <li className='template-item' key={template.id}>
                                 <span className='template-name'>{template.name}</span>
-                                 <span className='template-db'>{template.database}</span>
-                                 <span className='template-table'>{template.table}</span>
-                                 <span className='template-created-at'>{new Date(template.created_at).toLocaleDateString()}</span>
-                                 <span className='template-updated-at'>{new Date(template.updated_at).toLocaleDateString()}</span>
-                                 <div className='template-actions'>
+                                <span className='template-db'>{template.database}</span>
+                                <span className='template-table'>{template.table}</span>
+                                <span className='template-created-at'>{new Date(template.created_at).toLocaleDateString()}</span>
+                                <span className='template-updated-at'>{new Date(template.updated_at).toLocaleDateString()}</span>
+                                <div className='template-actions'>
                                     <button onClick={() => handleUseTemplate(template)}  title='Click to use template'  className='use-button'>Use</button>
-                                     <button onClick={() => handleEdit(template.id)} title='Click to edit template' className='edit-button'>Edit</button>
-                                     <button onClick={() => openDeleteModal(template)} title='Click to delete template' className='delete-button'>X</button>
-                                 </div>
-                             </li>
-                         ))}
-                     </ul>
-                 )}
-             </div>
+                                    <button onClick={() => handleEdit(template.id)} title='Click to edit template' className='edit-button'>Edit</button>
+                                    <button onClick={() => openDeleteModal(template)} title='Click to delete template' className='delete-button'>X</button>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
 
             {/* Message modal */}
             <Modal isOpen={isMessageModalOpen} onRequestClose={isMessageModalOpen} contentLabel="Message" className={`message-modal ${messageSuccess ? 'success' : 'error'}`} overlayClassName="none">
@@ -426,7 +429,7 @@ export default function Templates() {
                         <label htmlFor="table-select">Select a table</label>
                         <select id="table-select" value={editSelectedTable} onChange={(e) => setEditSelectedTable(e.target.value)}>
                             <option value="">Choose a table</option>
-                            {editTables.map((t, index) => {
+                            {editTables.length > 0 && editTables.map((t, index) => {
                                 // Support both string and object shapes
                                 const tableName = typeof t === 'string' ? t : (Object.values(t)[0] ?? JSON.stringify(t));
                                 return (

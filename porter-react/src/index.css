@@ -285,6 +285,67 @@ input[type="submit"]:hover, select:hover{
   
 }
 
+.bars {
+  display: inline-block;
+  cursor: pointer;
+  margin-left: 1rem;
+}
+.bar1, .bar2, .bar3 {
+  width: 35px;
+  height: 5px;
+  background-color: #ffffff;
+  margin: 6px 0;
+  transition: 0.4s;
+}
+
+.bars.active .bar1 {
+  transform: translate(0, 11px) rotate(-45deg);
+}
+
+.bars.active .bar2 {opacity: 0;}
+
+.bars.active .bar3 {
+  transform: translate(0, -11px) rotate(45deg);
+}
+
+
+.logout-container{
+  gap: 1rem;
+  position: absolute;
+  top: 100%;
+  right: 1rem;
+  background-color: #275c91;
+  border: #ffffff 1px solid;
+  border-radius: 8px;
+  padding: 0.5rem;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transform-origin: top center;
+  transform: scaleY(0);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.28s cubic-bezier(.4,2,.3,1), opacity 0.22s ease;
+}
+
+.logout-container.active{
+  transform: scaleY(1);
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* while closing: play the reverse animation but keep element visible until transition ends */
+.logout-container.closing{
+  transform: scaleY(0);
+  opacity: 0;
+  visibility: visible; /* remain visible while animating out */
+  pointer-events: none;
+}
+
+
+
+
 .main-div {
   width: auto;
   max-width: 90%;       /* keeps content from stretching too wide */
@@ -795,3 +856,4 @@ h6{
   box-shadow: none;
   transform: none;
 }
+
