@@ -111,6 +111,7 @@ class ExternalDbController extends Controller
         $limit      = $request->input('limit', 10);
         $foreign_keys  = $request->input('foreign_keys', []);
         $whereConds = $request->input('where', []);
+        
 
         // validation for table and column names to prevent SQL injection
         $validateIdentifier = function($name) {
@@ -132,7 +133,7 @@ class ExternalDbController extends Controller
         } else {
             foreach ($columns as $col) {
                 if (!$validateIdentifier($col)) continue;
-                $selectParts[] = "`$table`.`$col` as `$col";
+                $selectParts[] = "`$table`.`$col` as `$col`";
             }
         }
 
@@ -290,9 +291,11 @@ class ExternalDbController extends Controller
         $database = $request->input('database');
         $table = $request->input('table');
         $columns = $request->input('query.columns', []);
-        $limit = $request->input('limit', 1000); // default limit for export
         $foreign_keys = $request->input('query.foreign_keys', []);
         $whereConds = $request->input('query.where', []);
+        $limit = $request->input('limit', 1000); // default limit for export
+        $offset = $request->input('offset', 0);
+        $findReplaceRules = $request->input('find_replace_rules', []);
 
         $conn = $this->getExternalConnection($database);
         if ($conn instanceof \Illuminate\Http\JsonResponse) {
@@ -427,8 +430,45 @@ class ExternalDbController extends Controller
             }
         }
 
+        // Validate and set limit and offset
         $limit = intval($limit) > 0 ? intval($limit) : 1000;
-        $results = $query->limit($limit)->get();
+        $offset = intval($offset) > 0 ? intval($offset) : 0;
+
+        // Add limit and offset
+        $results = $query->limit($limit)->offset($offset)->get();
+
+        // Apply optional find/replace rules safely (avoid foreach by-reference)
+        if (!empty($findReplaceRules) && $results->count() > 0) {
+            $results = $results->map(function($row) use ($findReplaceRules) {
+                $arr = (array) $row;
+
+                foreach ($findReplaceRules as $rule) {
+                    // normalize rule (allow stdClass or array)
+                    if (is_object($rule)) $rule = (array) $rule;
+                    if (!is_array($rule) || !isset($rule['find'])) continue;
+
+                    $find = $rule['find'];
+                    $replace = $rule['replace'] ?? '';
+
+                    // If rule targets a specific column
+                    if (isset($rule['column']) && is_string($rule['column'])) {
+                        $col = $rule['column'];
+                        if (array_key_exists($col, $arr) && $arr[$col] !== null) {
+                            $arr[$col] = str_replace($find, $replace, (string) $arr[$col]);
+                        }
+                        continue;
+                    }
+
+                    // No column specified -> apply to all columns
+                    foreach ($arr as $colName => $val) {
+                        if ($val === null) continue;
+                        $arr[$colName] = str_replace($find, $replace, (string) $val);
+                    }
+                }
+
+                return (object) $arr;
+            });
+        }
 
         // Prepare CSV
         $csv = '';

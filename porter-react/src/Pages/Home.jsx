@@ -2,11 +2,16 @@ import { useContext, useState } from "react"
 import { AppContext } from "../Context/AppContext"
 import App from "../App"
 import {Link, useNavigate} from "react-router-dom"
+import { useEffect } from "react"
 
 export default function Home(){
 
     const navigate = useNavigate();
     const {token, user} = useContext(AppContext);
+
+    useEffect(() => {
+            document.title = 'Porter';
+        }, []);
 
     return(
         <>

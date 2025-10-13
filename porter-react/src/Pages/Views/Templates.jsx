@@ -10,6 +10,8 @@ Modal.setAppElement('#root');
 
 export default function Templates() {
 
+    const { appAddress } = useContext(AppContext);
+
     const location = useLocation(); 
     const navigate = useNavigate();
 
@@ -72,7 +74,7 @@ export default function Templates() {
 
     
     async function fetchTemplates(){
-        const response = await fetch("http://127.0.0.1:8000/api/query-templates", {
+        const response = await fetch(`${appAddress}/api/query-templates`, {
             method: "GET",
             headers: {
                 Authorization: `Bearer ${token}`,
@@ -89,7 +91,7 @@ export default function Templates() {
         if (!token) return;
         async function fetchTables(){
             try {
-                const r = await fetch(`http://127.0.0.1:8000/api/databases/external/tables?name=Gemini`, {
+                const r = await fetch(`${appAddress}/api/databases/external/tables?name=Gemini`, {
                     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
                 });
                 const d = await r.json();
@@ -100,6 +102,10 @@ export default function Templates() {
         }
         fetchTables();
     }, [token]);
+
+    useEffect(() => {
+            document.title = 'Porter - Templates';
+        }, []);
 
     // open edit modal and prefill all states from template payload
     async function openEditModal(template){
@@ -119,7 +125,7 @@ export default function Templates() {
         setEditSelectedTable(t);
         if (t) {
             try {
-                const res = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${t}`, {
+                const res = await fetch(`${appAddress}/api/databases/external/tables/${t}`, {
                     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
                 });
                 const data = await res.json();
@@ -224,7 +230,7 @@ export default function Templates() {
         let cancelled = false;
         async function fetchCols(){
             try {
-                const r = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${editSelectedTable}/columns?name=Gemini`, {
+                const r = await fetch(`${appAddress}/api/databases/external/tables/${editSelectedTable}/columns?name=Gemini`, {
                     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
                 });
                 const d = await r.json();
@@ -262,7 +268,7 @@ export default function Templates() {
             UI: UI
         };
         try {
-            const res = await fetch(`http://127.0.0.1:8000/api/query-templates/${editTemplateId}`, {
+            const res = await fetch(`${appAddress}/api/query-templates/${editTemplateId}`, {
                 method: "PUT",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -306,7 +312,7 @@ export default function Templates() {
         if (!templateToDelete) return;
 
         const id = templateToDelete.id;
-        const response = await fetch(`http://127.0.0.1:8000/api/query-templates/${id}`, {
+        const response = await fetch(`${appAddress}/api/query-templates/${id}`, {
             method: "DELETE",
             headers: {
                 Authorization: `Bearer ${token}`,

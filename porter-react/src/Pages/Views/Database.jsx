@@ -6,6 +6,8 @@ import Modal from 'react-modal';
 
 export default function Database(){
 
+    const { appAddress } = useContext(AppContext);
+
     const navigate = useNavigate();
 
 
@@ -49,7 +51,7 @@ export default function Database(){
         };
         // create new external database record
          try {
-             const response = await fetch("http://localhost:8000/api/databases/external", {
+             const response = await fetch(`${appAddress}/api/databases/external`, {
                  method: "POST",
                  headers: {
                      "Content-Type": "application/json",
@@ -143,7 +145,7 @@ export default function Database(){
 
     async function getDatabases() {
         try {
-            const response = await fetch("http://localhost:8000/api/databases/external", {
+            const response = await fetch(`${appAddress}/api/databases/external`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (!response.ok) throw new Error(`Status ${response.status}`);
@@ -242,7 +244,7 @@ export default function Database(){
 
         async function fetchTables() {
             try {
-                const resource = await fetch(`http://127.0.0.1:8000/api/databases/external/tables?name=${selectedDatabase}`, {
+                const resource = await fetch(`${appAddress}/api/databases/external/tables?name=${selectedDatabase}`, {
                     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
                 });
                 if (!resource.ok) throw new Error(`Status ${resource.status}`);
@@ -267,7 +269,7 @@ export default function Database(){
             setSelectedRFKs([]);
             setSelectedWhere([]);
             const res = await fetch(
-                `http://127.0.0.1:8000/api/databases/external/tables/${encodeURIComponent(selectedTable)}/columns?name=${encodeURIComponent(selectedDatabase)}`,
+                `${appAddress}/api/databases/external/tables/${encodeURIComponent(selectedTable)}/columns?name=${encodeURIComponent(selectedDatabase)}`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             const data = await res.json();
@@ -278,6 +280,10 @@ export default function Database(){
         }
         fetchTableColumns();
     }, [selectedTable, token]);
+
+    useEffect(() => {
+            document.title = 'Porter - Table Query Builder';
+        }, []);
     
 
 
@@ -295,7 +301,7 @@ export default function Database(){
             console.log('fetch table data payload:', payload);
 
             // POST to data endpoint for a specific table and include description as query param
-            const resource = await fetch(`http://127.0.0.1:8000/api/databases/external/tables/${selectedTable}`, {
+            const resource = await fetch(`${appAddress}/api/databases/external/tables/${selectedTable}`, {
                  method: 'POST',
                  headers: {
                      Authorization: `Bearer ${token}`,
@@ -421,7 +427,7 @@ export default function Database(){
         };
         console.log("Payload for saving template:", payload);
 
-        fetch("http://localhost:8000/api/query-templates", {
+        fetch(`${appAddress}/api/query-templates`, {
             method: "POST",
             headers: {
                 Authorization: `Bearer ${token}`,

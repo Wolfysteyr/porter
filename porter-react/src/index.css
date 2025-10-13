@@ -750,3 +750,48 @@ h6{
     transform-origin: right center;
   }
 }
+
+.FRrule-field, .limit-offset-field{
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  border: rgba(255, 255, 255, 0.322) 1px solid;
+  border-radius: 3px;
+}
+
+.FRrule-field button, .limit-offset-field button{
+  background-color: #b30404; /* Red */
+  color: white;
+  border: none;
+  padding: 0rem 0.2rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: transform 0.3s, box-shadow 0.3s, background-color 0.3s;
+  margin-left: 0.5rem; 
+}
+
+
+
+.add-rule-button{
+  color: white;
+  border: none;
+  padding: 0.5rem 0.9rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: transform 0.3s, box-shadow 0.3s, background-color 0.3s;
+  margin-bottom: 1rem; 
+  width: fit-content;
+  font-size: x-small;
+}
+.add-rule-button:hover {
+  box-shadow: 0 0 10px #04b304;
+  transform: scale(1.05);
+}
+
+.add-rule-button:disabled, .add-rule-button[disabled]{
+  background-color: #524d4d;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
