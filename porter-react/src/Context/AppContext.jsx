@@ -4,7 +4,7 @@ export const AppContext = createContext();
 
 export default function AppProvider({children}){
 
-    const appAddress = import.meta.env.VITE_APP_ADDRESS || "http://localhost:8000";
+    const appAddress = import.meta.env.APP_URL || "http://localhost:8000";
 
     const [token, setToken] = useState(localStorage.getItem('token'));
     const [user, setUser] = useState(null);

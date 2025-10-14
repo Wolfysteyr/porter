@@ -6,6 +6,7 @@ import Register from "./Pages/Auth/Register.jsx";
 import Database from "./Pages/Views/Database.jsx";
 import Templates from "./Pages/Views/Templates.jsx";
 import Export from "./Pages/Views/Export.jsx";
+import SetPassword from "./Pages/Auth/SetPassword.jsx";
 
 import './App.css'
 import { useContext } from "react";
@@ -18,12 +19,14 @@ function App() {
   return <BrowserRouter>
     <Routes>
       <Route path="/" element={<Layout/>}>
+
         <Route index element={<Home/>}/>
         <Route path="/login" element={ user ? <Home/> : <Login/>}/> 
-  <Route path="/register" element={ (user && user.admin === 1) ? <Register/> : <Home/> }/>
+        <Route path="/register" element={ (user) ? (user.admin === 1 ? <Register/> : <Home/>) : <Login/> }/>
         <Route path="/tqb" element={user ? <Database/> : <Login/>}/>
         <Route path="/templates" element={user ? <Templates/> : <Login/>}/>
         <Route path="/export" element={user ? <Export/> : <Login/>}/>
+        <Route path="/set-password" element={<SetPassword/>}/>
 
       </Route>
     </Routes>

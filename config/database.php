@@ -56,6 +56,7 @@ return [
             'strict' => true,
             'engine' => null,
         ],
+        
 
         'mysql' => [
             'driver' => 'mysql',
@@ -125,6 +126,19 @@ return [
             'prefix_indexes' => true,
             // 'encrypt' => env('DB_ENCRYPT', 'yes'),
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
+        ],
+
+        'oracle' => [
+            'driver' => 'oracle',
+            'tns' => env('DB_TNS', ''),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '1521'),
+            'database' => env('DB_DATABASE', 'laravel'),
+            'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => env('AL32UTF8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
         ],
 
     ],

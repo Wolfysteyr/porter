@@ -3,40 +3,26 @@ import { useNavigate } from "react-router-dom";
 import { AppContext } from "../../Context/AppContext";
 
 export default function Register() {
-    const { token, setToken, user } = useContext(AppContext);
+    const { appAddress , user } = useContext(AppContext);
     const navigate = useNavigate();
 
     const [formData, setFormData] = useState({
         name: "",
         email: "",
-        password: "",
-        password_confirmation: "",
         admin: 0,
     });
 
     const [errors, setErrors] = useState({});
 
-    // secure random password generator
-    function generatePassword(length = 16) {
-        const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*()-_=+"; // omit ambiguous chars
-        const values = new Uint32Array(length);
-        window.crypto.getRandomValues(values);
-        let out = "";
-        for (let i = 0; i < length; i++) {
-            out += charset[values[i] % charset.length];
-        }
-        return out;
-    }
 
     // password will be generated on submit if not provided
 
     async function handleRegister(e) {
         e.preventDefault();
         // ensure we send a password (generate a temporary one if none provided)
-        const pw = formData.password && formData.password.length > 0 ? formData.password : generatePassword(16);
-        const payload = { ...formData, password: pw, password_confirmation: pw };
+        const payload = { ...formData };
 
-        const res = await fetch("/api/register", {
+        const res = await fetch(`${appAddress}/api/register`, {
             method: "post",
             headers: {
                 Accept: "application/json",
@@ -51,23 +37,17 @@ export default function Register() {
         } else {
             console.log(data);
             // If an admin (currently logged in) created this user, don't overwrite the admin's session.
-            const createdToken = data?.token?.plainTextToken;
             if (user && user.admin === 1) {
                 // Admin created user: do not store or set the returned token. Keep admin logged in.
                 setErrors("");
-                setFormData({ name: "", email: "", password: "", password_confirmation: "" });
+                setFormData({ name: "", email: "", });
                 // Optionally navigate back to templates or stay. We'll navigate back to templates.
                 setTimeout(() => {
                     navigate('/');
                 }, 1000);
-            } else {
-                // Self-registration: store token and log the new user in as before
-                if (createdToken) {
-                    localStorage.setItem("token", createdToken);
-                    setToken(createdToken);
-                }
+            } else {                
                 setErrors("");
-                setFormData({ name: "", email: "", password: "", password_confirmation: "" });
+                setFormData({ name: "", email: ""});
                 setTimeout(() => {
                     navigate('/');
                 }, 3000);
@@ -107,7 +87,10 @@ export default function Register() {
 
                 {/* password is generated automatically on submit and sent in the payload */}
 
-                <input type="checkbox" id="admin-checkbox"
+                <input
+                    type="checkbox"
+                    id="admin-checkbox"
+                    checked={formData.admin === 1}
                     onChange={(e) =>
                         setFormData({ ...formData, admin: e.target.checked ? 1 : 0 })
                     }

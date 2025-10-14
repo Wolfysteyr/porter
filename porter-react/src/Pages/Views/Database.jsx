@@ -51,6 +51,7 @@ export default function Database(){
         };
         // create new external database record
          try {
+            console.log("Creating new database:", payload);
              const response = await fetch(`${appAddress}/api/databases/external`, {
                  method: "POST",
                  headers: {
@@ -684,6 +685,7 @@ export default function Database(){
                     <option value="mariadb">MariaDB</option>
                     <option value="sqlsrv">SQL Server</option>
                     <option value="sqlite">SQLite</option>
+                    <option value="oracle">Oracle</option>
                 </select>
                 <input type="text" placeholder="Host (default: localhost)" onChange={(e) => setNewDBHost(e.target.value)} />
                 <input type="text" placeholder="Port (default: 3306)" onChange={(e) => setNewDBPort(e.target.value)} />

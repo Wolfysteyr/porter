@@ -3,7 +3,9 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
-
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -34,3 +36,28 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('query-templates', QueryTemplateController::class);
 });
 
+Route::post('/reset-password', function (Request $request) {
+    $request->validate([
+        'token' => 'required',
+        'email' => 'required|email',
+        'password' => 'required|confirmed',
+    ]);
+    $status = Password::reset(
+        $request->only('email', 'password', 'password_confirmation', 'token'),
+        function ($user, $password) {
+            $user->forceFill([
+                'password' => bcrypt($password)
+            ])->save();
+
+            $user->setRememberToken(Str::random(60));
+        }
+    );
+
+    if ($status == Password::PASSWORD_RESET) {
+        return response()->json(['message' => 'Password reset successfully'], 200);
+    }
+
+    throw ValidationException::withMessages([
+        'email' => [__($status)],
+    ]);
+});
