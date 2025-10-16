@@ -16,7 +16,9 @@
     "react-modal": "^3.16.3",
     "react-router-dom": "^7.9.1",
     "react-select": "^5.10.2",
-    "tippy.js": "^6.3.7"
+    "react-switch": "^7.1.0",
+    "tippy.js": "^6.3.7",
+    "use-sound": "^5.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

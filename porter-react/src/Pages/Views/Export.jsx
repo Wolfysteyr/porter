@@ -6,6 +6,7 @@ import { AppContext } from '../../Context/AppContext';
 import Select from 'react-select';
 import Tippy from '@tippyjs/react';
 import 'tippy.js/dist/tippy.css';
+import Switch from 'react-switch';
 
 export default function Export() {
 
@@ -18,6 +19,7 @@ export default function Export() {
     
     const [FRRules, setFRRules] = useState([]);
     const [limitOffsetRules, setLimitOffsetRules] = useState([]);
+    const [columnNameChanges, setColumnNameChanges] = useState([]); // { original: string, new: string }
     const [showRules, setShowRules] = useState(false);
 
     const { token }  = useContext(AppContext);
@@ -71,6 +73,10 @@ export default function Export() {
         setLimitOffsetRules((prev) => [...prev, { limit: 1000, offset: 0 }]);
     }
 
+    const addNewColName = () => {
+        setColumnNameChanges((prev) => [...prev, { original: "", new: "" }]);
+    }
+
  
     const handleFRRuleChange = (index, field, value) => {
         setFRRules((prev) =>
@@ -81,6 +87,12 @@ export default function Export() {
 
     const handleLimitOffsetChange = (index, field, value) => {
         setLimitOffsetRules((prev) =>
+            prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
+        );
+    }
+
+    const handleColumnNameChange = (index, field, value) => {
+        setColumnNameChanges((prev) =>
             prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
         );
     }
@@ -298,6 +310,124 @@ export default function Export() {
         );
     };
 
+    // field for export column name change
+
+    const ColumnNameChange = ({ nameChange, index }) => {
+
+        // async function which fetches all column names from the source table
+
+
+        // async function with fetches all column names from the target database table
+
+
+        const [originalName, setOriginalName] = useState(nameChange.original);
+        const [newName, setNewName] = useState(nameChange.new);
+        const [exportType, toggleExportType] = useState(false); // false = csv export, true = db export
+        const [showWarning, setShowWarning] = useState(false);
+
+        const commitOriginal = () => {
+            handleColumnNameChange(index, 'original', originalName);
+        }
+        const commitNew = () => {
+            handleColumnNameChange(index, 'new', newName);
+        }
+
+        useEffect(() => {
+            setOriginalName("");
+        }, [exportType]);
+        useEffect(() => {
+            setNewName("");
+        }, [exportType]);
+
+
+        return (
+            <div className="column-name-change-container">
+                Change Column Name
+                <div className="column-name-change-field">
+                    <span style={{fontWeight: "500", fontSize: "large", textDecoration: originalName ? "underline" : "none"}}>{originalName ? originalName : "..."}</span>
+                    <br />
+                    <span>Export Type</span>
+                    <br />
+                    <Tippy
+                        className='switch-warning'
+                        visible={showWarning}
+                        interactive={true}
+                        placement="top"
+                        delay={[100, 50]}
+                        content={exportType ? (
+                            <div>
+                                Use this only when you know the target database structure.
+                                <br />
+                                <button onClick={() => setShowWarning(false)}>OK</button>
+                                <button onClick={() => {setShowWarning(false); toggleExportType(false);}}>Cancel</button>
+                            </div>
+                        ) : ''}> 
+                    <div>
+                     <span className={!exportType ? 'active' : ''}> CSV </span>
+                        <Switch
+                            onChange={() => {toggleExportType(!exportType); setShowWarning(!exportType);}}
+                            checked={exportType}
+                            uncheckedIcon={false}
+                            checkedIcon={false}
+                            onColor="#888888"
+                            onHandleColor="#ffffff"
+                            handleDiameter={20}
+                            height={10}
+                            width={40}
+                            onBlur={commitOriginal}
+                            // add warning if switching type to db like "only do this if you know which data goes where"
+                        />
+                        
+                        <span className={exportType ? 'active' : ''}> DB </span>
+                        </div>
+                    </Tippy>
+                    <div className='name-change-inputs'>
+                        {!exportType ? (
+                            <> 
+                                <label>Old Column Name</label>
+                                <Select
+                                    options={Object.keys(findOptions || {}).map(col => ({ value: col, label: col }))}
+                                    value={originalName ? { value: originalName, label: originalName } : null}
+                                    onChange={(selected) => setOriginalName(selected ? selected.value : '')}
+                                    styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+
+                                />
+                                {originalName && (
+                                    <>
+                                        <label>New Column Name</label>
+                                        <input
+                                            type="text"
+                                            placeholder='New Column Name'
+                                            value={newName}
+                                            onChange={(e) => setNewName(e.target.value)}
+                                            onBlur={commitNew}
+                                        />
+                                    </>
+                                )}
+                            </>
+                        ) : (
+                            <>           
+
+                                {/* DB export mode: old column name -> target db, target table, new column name */}            
+                                <label>Old Column Name</label>
+                                <Select
+                                    options={Object.keys(findOptions || {}).map(col => ({ value: col, label: col }))}
+                                    value={originalName ? { value: originalName, label: originalName } : null}
+                                    onChange={(selected) => setOriginalName(selected ? selected.value : '')}
+                                    styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                                />
+
+                                
+                            </>
+
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+
     // destructure with safe defaults
     const {
         name = '',
@@ -455,11 +585,16 @@ export default function Export() {
                                 <h3>Export Rules</h3>
                                 <button className="add-rule-button" onClick={addFRRule}>Add New F&R Rule</button>
                                 <button className='add-rule-button' onClick={addLimitOffset} disabled={limitOffsetRules.length >= 1}>Add Limit/Offset</button>
+                                <button className='add-rule-button' onClick={addNewColName}>Change Column Name</button>
+
                                 {FRRules.map((rule, index) => (
                                     <FRRuleField key={index} rule={rule} index={index} />
                                 ))}
                                 {limitOffsetRules.map((rule, index) => (
                                     <LimitOffsetRuleField key={index} rule={rule} index={index} />
+                                ))}
+                                {columnNameChanges.map((nameChange, index) => (
+                                    <ColumnNameChange key={index} nameChange={nameChange} index={index} />
                                 ))}
                                 
 

@@ -511,8 +511,8 @@ export default function Database(){
                         <option value="">Choose a database</option>
                         {databases.map((db, index) => (
                             // backend returns objects like { identifier , name } — support both shapes
-                            <option key={index} value={typeof db === 'string' ? db : (db.description ?? db.name ?? JSON.stringify(db))}>
-                                {typeof db === 'string' ? db : (db.name ?? db.description ?? JSON.stringify(db))}
+                            <option key={index} value={typeof db === 'string' ? db : ( db.name ?? JSON.stringify(db))}>
+                                {typeof db === 'string' ? db : (db.name ?? JSON.stringify(db))}
                             </option>
                         ))}
                         <option value="New Database" style={{ fontWeight: "bold" }}>+New Database</option>
@@ -532,7 +532,7 @@ export default function Database(){
                                     })} 
                                     value={selectedTable ? { value: selectedTable, label: selectedTable } : null}
                                     onChange={(opt) => setSelectedTable(opt ? opt.value : '')}
-                                    styles={{menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                                    styles={{menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' }), width: "fit-content"   }}
                                 />
                             </div>
                         </>
@@ -727,7 +727,7 @@ export default function Database(){
             >
                 <h2>Create New Database</h2>
                 <input type="text" placeholder="Database Name" onChange={(e) => setNewDBName(e.target.value)} />
-                <input type="text" placeholder="Description" onChange={(e) => setNewDBdescription(e.target.value)} /> {/* custom description to distinguish database, easier for users*/}
+                <input type="text" placeholder="Description" onChange={(e) => setNewDBdescription(e.target.value)} /> {/* custom description to help identify the database */}
                 <select name="driver" id="driver" onChange={(e) => setNewDBDriver(e.target.value)}>
                     <option value="mysql">MySQL</option>
                     <option value="pgsql">PostgreSQL</option>
