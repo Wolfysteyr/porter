@@ -43,6 +43,7 @@ export default function Templates() {
     const [editName, setEditName] = useState('');
     const [editTables, setEditTables] = useState([]);
     const [editSelectedTable, setEditSelectedTable] = useState('');
+    const [editSelectedDatabase, setEditSelectedDatabase] = useState('');
     const [editTableCols, setEditTableCols] = useState([]);
     const [editForeignKeys, setEditForeignKeys] = useState([]); // same shape as Database.jsx
     const [editRowLimit, setEditRowLimit] = useState(0);
@@ -91,7 +92,7 @@ export default function Templates() {
         if (!token) return;
         async function fetchTables(){
             try {
-                const r = await fetch(`${appAddress}/api/databases/external/tables?name=Gemini`, {
+                const r = await fetch(`${appAddress}/api/databases/external/tables?name=${editSelectedDatabase}`, {
                     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
                 });
                 const d = await r.json();
@@ -101,7 +102,7 @@ export default function Templates() {
             }
         }
         fetchTables();
-    }, [token]);
+    }, [token, editSelectedDatabase, appAddress]);
 
     useEffect(() => {
             document.title = 'Porter - Templates';
@@ -121,16 +122,25 @@ export default function Templates() {
         setEditSelectedRFKs((template.UI && template.UI.selectedRFKs) ? template.UI.selectedRFKs : {});
 
         // table and columns: set selected table and fetch its columns
-        const t = template.table ?? '';
-        setEditSelectedTable(t);
+    const t = template.table ?? '';
+    setEditSelectedTable(t);
+    setEditSelectedDatabase(template.database ?? '');
         if (t) {
             try {
-                const res = await fetch(`${appAddress}/api/databases/external/tables/${t}`, {
-                    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
+                // include database name so the external DB controller can scope the table columns
+                const dbName = encodeURIComponent(template.database ?? editSelectedDatabase);
+                const res = await fetch(`${appAddress}/api/databases/external/tables/${encodeURIComponent(t)}/columns?name=${dbName}`, {
+                    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, method: 'GET'
                 });
-                const data = await res.json();
-                setEditTableCols(data.columns || []);
-                setEditForeignKeys(data.foreignKeys || []);
+                if (!res.ok) {
+                    console.error('Failed to fetch table columns for edit, status', res.status);
+                    setEditTableCols([]);
+                    setEditForeignKeys([]);
+                } else {
+                    const data = await res.json();
+                    setEditTableCols(data.columns || []);
+                    setEditForeignKeys(data.foreignKeys || []);
+                }
             } catch (err) {
                 console.error("failed to load columns for edit", err);
             }
@@ -162,10 +172,13 @@ export default function Templates() {
             return copy;
         });
 
-        setEditForeignKeys((prev) => {
-            const copy = prev.map(p => ({
+        // Maintain a separate selection structure (editFKSelection) and do not overwrite
+        // the backend-provided editForeignKeys metadata used for rendering.
+        setEditFKSelection((prev) => {
+            const prevArr = Array.isArray(prev) ? prev : [];
+            const copy = prevArr.map(p => ({
                 parentCol: p.parentCol,
-                fkTables: p.fkTables.map(t => ({ tableName: t.tableName, fkColumns: [...t.fkColumns] }))
+                fkTables: (p.fkTables || []).map(t => ({ tableName: t.tableName, fkColumns: [...(t.fkColumns || [])] }))
             }));
             const parentIdx = copy.findIndex(p => p.parentCol === parentCol);
             if (parentIdx === -1) {
@@ -230,7 +243,8 @@ export default function Templates() {
         let cancelled = false;
         async function fetchCols(){
             try {
-                const r = await fetch(`${appAddress}/api/databases/external/tables/${editSelectedTable}/columns?name=Gemini`, {
+                const dbName = encodeURIComponent(editSelectedDatabase);
+                const r = await fetch(`${appAddress}/api/databases/external/tables/${encodeURIComponent(editSelectedTable)}/columns?name=${dbName}`, {
                     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
                 });
                 const d = await r.json();
@@ -243,7 +257,7 @@ export default function Templates() {
         }
         fetchCols();
         return () => { cancelled = true; }
-    }, [editSelectedTable, token]);
+    }, [editSelectedTable, token, editSelectedDatabase, appAddress]);
 
     // save edited template
     async function handleSaveEditedTemplate(){
@@ -262,7 +276,7 @@ export default function Templates() {
             name: editName,
             query: query,
             template: query, // also send 'template' to satisfy update validation mismatch
-            database: "Gemini",
+            database: editSelectedDatabase,
             table: editSelectedTable,//#endregion
             user_id: user.id,
             UI: UI
@@ -424,7 +438,7 @@ export default function Templates() {
                     <div style={{width: "60%", margin: "auto auto 20px auto" }}>
                         <label htmlFor="db">Select Database</label>
                         <select name="db" id="db" disabled>
-                            <option value="Gemini">Gemini</option>
+                            <option value={editSelectedDatabase}>{editSelectedDatabase}</option>
                         </select>
                         <label htmlFor="table-select">Select a table</label>
                         <select id="table-select" value={editSelectedTable} onChange={(e) => setEditSelectedTable(e.target.value)}>
@@ -446,7 +460,8 @@ export default function Templates() {
                                 {isEditToggled("column-checklist") && (
                                     <div id="column-checklist" className="column-checklist">
                                         {editTableCols.map((col) => {
-                                            const fk = Object.values(editForeignKeys).find(fk => fk.constraint_name === col);
+                                            // find foreign key for this column by matching column_name
+                                            const fk = Object.values(editForeignKeys).find(fk => fk.column_name === col);
                                             return (
                                                 <div key={col} className="column-item">
                                                     <label>
@@ -478,8 +493,8 @@ export default function Templates() {
                                                                                 <label>
                                                                                     <input
                                                                                         type="checkbox"
-                                                                                        checked={Array.isArray(editSelectedRFKs[fk.constraint_name]) && editSelectedRFKs[fk.constraint_name].includes(fkcol)}
-                                                                                        onChange={() => handleEditFKSelection(fk.constraint_name, fk.referenced_table, fkcol)}
+                                                                                        checked={Array.isArray(editSelectedRFKs[fk.column_name]) && editSelectedRFKs[fk.column_name].includes(fkcol)}
+                                                                                        onChange={() => handleEditFKSelection(fk.column_name, fk.referenced_table, fkcol)}
                                                                                     />
                                                                                     {fkcol}
                                                                                 </label>

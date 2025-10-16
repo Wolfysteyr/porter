@@ -1,4 +1,5 @@
-import { useContext, useState, useEffect } from "react"
+import { useContext, useState, useEffect, useCallback } from "react"
+import Select from 'react-select';
 import { AppContext } from "../../Context/AppContext"
 import { useNavigate } from "react-router-dom";
 import Modal from 'react-modal';
@@ -28,6 +29,20 @@ export default function Database(){
     // list of available tables in db
     const [tables, setTables] = useState([]); 
     const [databases, setDatabases] = useState([]); // for future use if internal dbs are added
+
+    const getDatabases = useCallback(async () => {
+        try {
+            const response = await fetch(`${appAddress}/api/databases/external`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error(`Status ${response.status}`);
+            const data = await response.json();
+            setDatabases(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error("Failed to fetch databases:", err);
+            setDatabases([]);
+        }
+    }, [appAddress, token]);
 
     // new database modal vars
     const [newDBName, setNewDBName] = useState("");
@@ -67,7 +82,6 @@ export default function Database(){
                  throw new Error(errorMsg);
              } 
              const data = await response.json();
-             toggleLoading(false);
              await getDatabases(); // refresh database list
             // prefer selecting by description (backend lookups use description)
             setSelectedDatabase(data.name);
@@ -75,12 +89,10 @@ export default function Database(){
             showMessage("Database created successfully!", true);
          } catch (error) {
              console.error("Error creating new database:", error);
-             toggleLoading(false);
              showMessage(`Error creating new database: ${error.message}`, false);
+         } finally {
+             toggleLoading(false);
          }
-            
-
-
     }
     
     function showMessage(msg, success) {
@@ -137,32 +149,19 @@ export default function Database(){
             setTableCols([]);
             setTableData([]);
             setSelectedCols([]);
-            return
+            return;
         }
         setToggleNewDBModal(true);
     
     }
 
 
-    async function getDatabases() {
-        try {
-            const response = await fetch(`${appAddress}/api/databases/external`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (!response.ok) throw new Error(`Status ${response.status}`);
-            const data = await response.json();
-            setDatabases(Array.isArray(data) ? data : []);
-        } catch (err) {
-            console.error("Failed to fetch databases:", err);
-            setDatabases([]);
-        }
-     }
      useEffect(() => {
          if (token) {
              getDatabases();
              setSelectedDatabase(""); // default for now, later can add internal db support
          }
-     }, [token]);
+     }, [token, appAddress, getDatabases]);
 
     // manage FKSelection: { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
     function handleFKSelection(parentCol, tableName, fkColumn) {
@@ -245,30 +244,43 @@ export default function Database(){
 
         async function fetchTables() {
             try {
-                const resource = await fetch(`${appAddress}/api/databases/external/tables?name=${selectedDatabase}`, {
+                toggleLoading(true);
+                const resource = await fetch(`${appAddress}/api/databases/external/tables?name=${encodeURIComponent(selectedDatabase)}`, {
                     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
                 });
                 if (!resource.ok) throw new Error(`Status ${resource.status}`);
                 const data = await resource.json();
                 console.log("Fetched tables:", data);
-                setTables(Array.isArray(data) ? data : []);
+                // backend may return { driver, tables } or an array
+                if (data && typeof data === 'object' && Array.isArray(data.tables)) {
+                    setTables(data.tables);
+                } else if (Array.isArray(data)) {
+                    setTables(data);
+                } else {
+                    setTables(data?.tables ?? data?.rows ?? []);
+                }
             } catch (err) {
                 console.error("Failed to fetch tables: ", err);
                 setTables([]);
+            } finally {
+                toggleLoading(false);
             }
         }
         fetchTables();
-    }, [token, selectedDatabase]);
+    }, [token, selectedDatabase, appAddress]);
     
     //gets the selected table's list of columns 
     useEffect(() => {
         if (!selectedTable) return;
  
         async function fetchTableColumns() {
+            try {
             setSelectedCols([]);
             setForeignKeysSelection([]);
             setSelectedRFKs([]);
             setSelectedWhere([]);
+            toggleLoading(true);
+            console.log("Fetching columns for table:", selectedTable, "...");
             const res = await fetch(
                 `${appAddress}/api/databases/external/tables/${encodeURIComponent(selectedTable)}/columns?name=${encodeURIComponent(selectedDatabase)}`,
                 { headers: { Authorization: `Bearer ${token}` } }
@@ -276,11 +288,16 @@ export default function Database(){
             const data = await res.json();
             setTableCols(data.columns);
             setForeignKeys(data.foreignKeys);
-            // console.log("foreignKeys:", data.foreignKeys);
-            // console.log(data);
+            console.log("foreignKeys:", data.foreignKeys);
+            console.log(data);
+        } catch (error) {
+            console.error("Error fetching table columns:", error);
+        } finally {
+            toggleLoading(false);
+        }
         }
         fetchTableColumns();
-    }, [selectedTable, token]);
+    }, [selectedTable, token, appAddress, selectedDatabase]);
 
     useEffect(() => {
             document.title = 'Porter - Table Query Builder';
@@ -405,7 +422,32 @@ export default function Database(){
         let query = {};
 
         if (Array.isArray(selectedCols) && selectedCols.length > 0) query.columns = selectedCols;
-        if (Array.isArray(foreignKeysSelection) && foreignKeysSelection.length > 0) query.foreign_keys = foreignKeysSelection;
+
+        // Prefer the structured foreignKeysSelection if present. If it's empty but the
+        // checkbox-driven selectedRFKs has entries, derive the structured shape from
+        // the metadata in `foreignKeys` so the template save contains the FK info.
+        if (Array.isArray(foreignKeysSelection) && foreignKeysSelection.length > 0) {
+            query.foreign_keys = foreignKeysSelection;
+        } else if (selectedRFKs && Object.keys(selectedRFKs).length > 0) {
+            // Build an array like: [{ parentCol, fkTables: [{ tableName, fkColumns: [...] }] }, ...]
+            const derived = Object.keys(selectedRFKs).map((parentCol) => {
+                // Try to find metadata for this parent column
+                const fkMeta = Array.isArray(foreignKeys)
+                    ? foreignKeys.find(f => f.column_name === parentCol)
+                    : Object.values(foreignKeys || {}).find(f => f.column_name === parentCol);
+
+                const tableName = fkMeta?.referenced_table || null;
+                const fkCols = Array.isArray(selectedRFKs[parentCol]) ? selectedRFKs[parentCol] : [];
+
+                return {
+                    parentCol,
+                    fkTables: tableName ? [{ tableName, fkColumns: fkCols }] : []
+                };
+            }).filter(item => item.fkTables && item.fkTables.length > 0);
+
+            if (derived.length > 0) query.foreign_keys = derived;
+        }
+
         if (Array.isArray(selectedWhere) && selectedWhere.length > 0) query.where = selectedWhere;
         if (Object.keys(query).length === 0) {
            query.columns = ["*"];
@@ -475,17 +517,24 @@ export default function Database(){
                         ))}
                         <option value="New Database" style={{ fontWeight: "bold" }}>+New Database</option>
                     </select>
+
                     {Array.isArray(tables) && tables.length > 0 && (
                         <>
                             <label htmlFor="table-select">Select a table</label>
-                            <select id="table-select" value={selectedTable} onChange={(e) => setSelectedTable(e.target.value)}>
-                                <option value="">Choose a table</option>
-                                {tables.map((t, index) => {
-                                    // support different shapes returned by backend (string or object)
-                                    const tableName = typeof t === 'string' ? t : (Object.values(t)[0] ?? JSON.stringify(t));
-                                    return <option key={index} value={tableName}>{tableName}</option>;
-                         })}
-                    </select>
+                            <div style={{ marginTop: 8 }}>
+                                <Select
+                                    inputId="table-select"
+                                    placeholder="Choose a table"
+                                    isClearable
+                                    options={tables.map((t) => {
+                                        const tableName = typeof t === 'string' ? t : (t.name ?? t.table ?? Object.values(t)[0] ?? JSON.stringify(t));
+                                        return { value: tableName, label: tableName };
+                                    })} 
+                                    value={selectedTable ? { value: selectedTable, label: selectedTable } : null}
+                                    onChange={(opt) => setSelectedTable(opt ? opt.value : '')}
+                                    styles={{menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+/>
+                            </div>
                         </>
                     )}
                     
