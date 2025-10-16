@@ -161,13 +161,32 @@ export default function Export() {
 
     const FRRuleField = ({ rule, index }) => {
         // build grouped options for react-select from findOptions state
-        const groupedOptions = Object.entries(findOptions || {}).map(([col, vals]) => ({
-            label: col,
-            options: (Array.isArray(vals) ? vals : []).map((val) => {
+
+        // compute values selected by other FR rules (exclude current index)
+        const selectedValues = new Set(
+            FRRules
+                .map((r, i) => (i !== index ? r.find : null))
+                .filter(v => v !== null && v !== undefined && v !== '')
+        );
+
+        const groupedOptions = Object.entries(findOptions || {}).map(([col, vals]) => {
+            const opts = (Array.isArray(vals) ? vals : []).map((val) => {
                 const valueStr = val === null || val === undefined ? '' : String(val);
                 return { value: `${col}::${valueStr}`, label: valueStr === '' ? '<empty>' : valueStr };
-            })
-        }));
+            }).filter(opt => {
+                // Always keep the option if it corresponds to the current rule's selected value
+                if (rule.find && (opt.value === rule.find || opt.value.endsWith(`::${rule.find}`))) {
+                    return true;
+                }
+                // Exclude option if any other rule has selected the same value (match by exact or endsWith '::value')
+                for (const sv of selectedValues) {
+                    if (opt.value === sv || opt.value.endsWith(`::${sv}`)) return false;
+                }
+                return true;
+            });
+
+            return { label: col, options: opts };
+        });
 
         // find selected option object matching the stored rule.find value
         let selectedOption = null;
@@ -204,7 +223,7 @@ export default function Export() {
                 Find & Replace
                 <button onClick={() => removeFRRule(index)}>✖</button>
                 <Select
-                    options={groupedOptions}
+                    options={groupedOptions} // shows "column::value" in value, but excludes already selected values
                     value={selectedOption}
                     onChange={(opt) => {
                         const token = opt ? opt.value : '';

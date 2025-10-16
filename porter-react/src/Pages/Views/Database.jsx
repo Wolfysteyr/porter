@@ -533,7 +533,7 @@ export default function Database(){
                                     value={selectedTable ? { value: selectedTable, label: selectedTable } : null}
                                     onChange={(opt) => setSelectedTable(opt ? opt.value : '')}
                                     styles={{menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
-/>
+                                />
                             </div>
                         </>
                     )}

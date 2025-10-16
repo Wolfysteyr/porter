@@ -4,7 +4,7 @@ import { useContext } from 'react';
 import { useState , useEffect} from 'react';
 import Modal from 'react-modal';
 import { useNavigate, useLocation } from 'react-router-dom';
-
+import Select from 'react-select';
 
 Modal.setAppElement('#root');
 
@@ -96,13 +96,15 @@ export default function Templates() {
                     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
                 });
                 const d = await r.json();
-                setEditTables(d);
+                setEditTables(d.tables || []);
+                console.log("Fetched tables for edit modal", d.tables || []);
+
             } catch(e){
                 console.error("fetch tables failed", e);
             }
         }
         fetchTables();
-    }, [token, editSelectedDatabase, appAddress]);
+    }, [ editSelectedDatabase]);
 
     useEffect(() => {
             document.title = 'Porter - Templates';
@@ -121,33 +123,33 @@ export default function Templates() {
         setEditToggles((template.UI && template.UI.toggles) ? template.UI.toggles : {});
         setEditSelectedRFKs((template.UI && template.UI.selectedRFKs) ? template.UI.selectedRFKs : {});
 
-        // table and columns: set selected table and fetch its columns
-    const t = template.table ?? '';
-    setEditSelectedTable(t);
-    setEditSelectedDatabase(template.database ?? '');
-        if (t) {
-            try {
-                // include database name so the external DB controller can scope the table columns
-                const dbName = encodeURIComponent(template.database ?? editSelectedDatabase);
-                const res = await fetch(`${appAddress}/api/databases/external/tables/${encodeURIComponent(t)}/columns?name=${dbName}`, {
-                    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, method: 'GET'
-                });
-                if (!res.ok) {
-                    console.error('Failed to fetch table columns for edit, status', res.status);
-                    setEditTableCols([]);
-                    setEditForeignKeys([]);
-                } else {
-                    const data = await res.json();
-                    setEditTableCols(data.columns || []);
-                    setEditForeignKeys(data.foreignKeys || []);
+            // table and columns: set selected table and fetch its columns
+        const t = template.table ?? '';
+        setEditSelectedTable(t);
+        setEditSelectedDatabase(template.database ?? '');
+            if (t) {
+                try {
+                    // include database name so the external DB controller can scope the table columns
+                    const dbName = encodeURIComponent(template.database ?? editSelectedDatabase);
+                    const res = await fetch(`${appAddress}/api/databases/external/tables/${encodeURIComponent(t)}/columns?name=${dbName}`, {
+                        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, method: 'GET'
+                    });
+                    if (!res.ok) {
+                        console.error('Failed to fetch table columns for edit, status', res.status);
+                        setEditTableCols([]);
+                        setEditForeignKeys([]);
+                    } else {
+                        const data = await res.json();
+                        setEditTableCols(data.columns || []);
+                        setEditForeignKeys(data.foreignKeys || []);
+                    }
+                } catch (err) {
+                    console.error("failed to load columns for edit", err);
                 }
-            } catch (err) {
-                console.error("failed to load columns for edit", err);
+            } else {
+                setEditTableCols([]);
+                setEditForeignKeys([]);
             }
-        } else {
-            setEditTableCols([]);
-            setEditForeignKeys([]);
-        }
         setIsEditModalOpen(true);
     }
 
@@ -436,21 +438,23 @@ export default function Templates() {
                     </div>
 
                     <div style={{width: "60%", margin: "auto auto 20px auto" }}>
-                        <label htmlFor="db">Select Database</label>
+                        <label htmlFor="db">Selected Database</label>
                         <select name="db" id="db" disabled>
                             <option value={editSelectedDatabase}>{editSelectedDatabase}</option>
                         </select>
-                        <label htmlFor="table-select">Select a table</label>
-                        <select id="table-select" value={editSelectedTable} onChange={(e) => setEditSelectedTable(e.target.value)}>
-                            <option value="">Choose a table</option>
-                            {editTables.length > 0 && editTables.map((t, index) => {
-                                // Support both string and object shapes
-                                const tableName = typeof t === 'string' ? t : (Object.values(t)[0] ?? JSON.stringify(t));
-                                return (
-                                    <option key={index} value={tableName}>{tableName}</option>
-                                )
-                            })}
-                        </select>
+                        <label htmlFor="table-select">Selected table</label>
+                        <Select
+                                    inputId="table-select"
+                                    placeholder="Choose a table"
+                                    isClearable
+                                    options={editTables.map((t) => {
+                                        const tableName = typeof t === 'string' ? t : (t.name ?? t.table ?? Object.values(t)[0] ?? JSON.stringify(t));
+                                        return { value: tableName, label: tableName };
+                                    })}
+                                    value={editSelectedTable ? { value: editSelectedTable, label: editSelectedTable } : null}
+                                    onChange={(opt) => setEditSelectedTable(opt ? opt.value : '')}
+                                    styles={{menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                                />
                     </div>
 
                     <div className="filterDIV">
