@@ -115,8 +115,8 @@ function ColumnNameChange({
 
     return (
             <div className="column-name-change-field">
-                <button onClick={() => removeColumnChange(index)}>✖</button>
                 <span style={{fontWeight: "500", fontSize: "large", textDecoration: originalName ? "underline" : "none"}}>{originalName ? originalName : "..."}</span>
+                <button onClick={() => removeColumnChange(index)}>✖</button>
                 <br />
                 <span>Export Type</span>
                 <br />
@@ -287,7 +287,7 @@ function FRRuleField({ rule, index, FRRules, findOptions, findOptionsLoading, re
                     isLoading={findOptionsLoading}
                     placeholder="Find... (type to search)"
                     noOptionsMessage={() => findOptionsLoading ? 'Loading...' : 'No values'}
-                    styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                    styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff'}), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
                 />
                 {rule.find && (
                     <>
@@ -360,9 +360,9 @@ export default function Export() {
     const [template, setTemplate] = useState({});
     const [isQueryHidden, setIsQueryHidden] = useState(true);
     
-    const [FRRules, setFRRules] = useState([]);
-    const [limitOffsetRules, setLimitOffsetRules] = useState([]);
-    const [columnNameChanges, setColumnNameChanges] = useState([]); // { original: string, new: string }
+    const [FRRules, setFRRules] = useState([]); // { find: string, replace: string }, holds find/replace rules
+    const [limitOffsetRules, setLimitOffsetRules] = useState([]); // { limit: number, offset: number }, holds limit/offset rule
+    const [columnNameChangesCSV, setColumnNameChangesCSV] = useState([]); // { original: string, new: string }, holds list of column name changes (CSV)
     const [showRules, setShowRules] = useState(false);
 
     const { token }  = useContext(AppContext);
@@ -444,7 +444,7 @@ export default function Export() {
     }
 
     const addNewColName = () => {
-        setColumnNameChanges((prev) => [...prev, { original: "", new: "" }]);
+        setColumnNameChangesCSV((prev) => [...prev, { original: "", new: "" }]);
     }
 
  
@@ -463,10 +463,10 @@ export default function Export() {
 
     // make handler stable to avoid re-creating function every render
     const handleColumnNameChange = useCallback((index, field, value) => {
-        setColumnNameChanges((prev) =>
+        setColumnNameChangesCSV((prev) =>
             prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
         );
-    }, [setColumnNameChanges]);
+    }, [setColumnNameChangesCSV]);
 
 
     // Remove find replace rule
@@ -480,7 +480,7 @@ export default function Export() {
 
     // Remove column name change entry
     const removeColumnChange = (index) => {
-        setColumnNameChanges((prev) => prev.filter((_, i) => i !== index));
+        setColumnNameChangesCSV((prev) => prev.filter((_, i) => i !== index));
     }
 
 
@@ -583,15 +583,17 @@ export default function Export() {
 
     async function handleExport(template) {
         try {
+            toggleLoading(true);
             let payload = { 
                 ...template,
                 find_replace_rules: FRRules,
                 limit: limitOffsetRules[0]?.limit ?? 1000, // limit to 1000 rows for performance
                 offset: limitOffsetRules[0]?.offset ?? 0,
-                column_name_changes: columnNameChanges.filter(cnc => cnc.original && cnc.new)
+                column_name_changes: !exportType ? columnNameChangesCSV.filter(c => c.original && c.new) : [], // add handling for db export
+                exportType: exportType
             }
             console.log('payload for export', payload);
-            const response = await fetch(`${appAddress}/api/databases/external/export`, {
+            const response = await fetch(`${appAddress}/api/export`, {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -605,19 +607,30 @@ export default function Export() {
                 console.error('Export failed with status:', response.status);
                 throw new Error('Failed to export data');
             }
-
+            if (exportType) {
+                alert('Data exported to target database successfully.');
+                navigate('/templates', { state: { message: 'Data exported to target database successfully.' } });
+                return;
+            }
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${template.table}_export.csv`;
+            a.download = `${template.name}_export.csv`;
             document.body.appendChild(a);
             a.click();
             a.remove();
             window.URL.revokeObjectURL(url);
+            navigate('/templates', { state: { message: `Export successful! Exported to ${template.name + '_export.csv'}` } });
+
         } catch (error) {
             console.error('Error exporting data:', error);
-            }
+            alert('Error exporting data. Please try again later.');
+        } finally {
+            toggleLoading(false);
+            
+
+        }
     }
 
     return (
@@ -718,44 +731,49 @@ export default function Export() {
                                 {limitOffsetRules.map((rule, index) => (
                                     <LimitOffsetRuleField key={index} rule={rule} index={index} removeLimitOffsetRule={removeLimitOffsetRule} handleLimitOffsetChange={handleLimitOffsetChange} />
                                 ))}
-                                <div className="column-name-change-container" hidden={columnNameChanges.length === 0}>
-                                Change Column Names
+                                <div className="column-name-change-container" hidden={columnNameChangesCSV.length === 0}>
+                                <Tippy content={<span>It is also recommended to use this when you don't need to change column names for the sake of correctness.</span>}>
+                                    <span>ℹ️</span>
+                                </Tippy>    
+                                Change Column Names 
+                                
+                                <br />
                                 <Tippy
-                    className='switch-warning'
-                    visible={showWarning}
-                    interactive={true}
-                    placement="top"
-                    delay={[100, 50]}
-                    content={exportType ? (
-                        <div>
-                            Use this only when you know the target database structure.
-                            <br />
-                            <button onClick={() => setShowWarning(false)}>OK</button>
-                            <button onClick={() => {setShowWarning(false); setExportType(false);}}>Cancel</button>
-                        </div>
-                    ) : ''}>
-                <div>
-                    <span className={!exportType ? 'active' : ''}> CSV </span>
-                    <Switch
-                        onChange={() => {
-                            const next = !exportType;
-                            setExportType(next);
-                            // show warning only when switching to DB mode
-                            setShowWarning(next === true);
-                        }}
-                        checked={exportType}
-                        uncheckedIcon={false}
-                        checkedIcon={false}
-                        onColor="#888888"
-                        onHandleColor="#ffffff"
-                        handleDiameter={20}
-                        height={10}
-                        width={40}
-                    />
-                    <span className={exportType ? 'active' : ''}> DB </span>
-                </div>
-                </Tippy>
-                                {columnNameChanges.map((nameChange, index) => (
+                                    className='switch-warning'
+                                    visible={showWarning}
+                                    interactive={true}
+                                    placement="top"
+                                    delay={[100, 50]}
+                                    content={exportType ? (
+                                        <div>
+                                            Use this only when you know the target database structure.
+                                            <br />
+                                            <button onClick={() => setShowWarning(false)}>OK</button>
+                                            <button onClick={() => {setShowWarning(false); setExportType(false);}}>Cancel</button>
+                                        </div>
+                                    ) : ''}>
+                                <div>
+                                    <span className={!exportType ? 'active' : ''}> CSV </span>
+                                    <Switch
+                                        onChange={() => {
+                                            const next = !exportType;
+                                            setExportType(next);
+                                            // show warning only when switching to DB mode
+                                            setShowWarning(next === true);
+                                        }}
+                                        checked={exportType}
+                                        uncheckedIcon={false}
+                                        checkedIcon={false}
+                                        onColor="#888888"
+                                        onHandleColor="#ffffff"
+                                        handleDiameter={20}
+                                        height={10}
+                                        width={40}
+                                    />
+                                    <span className={exportType ? 'active' : ''}> DB </span>
+                                </div>
+                                </Tippy>
+                                {columnNameChangesCSV.map((nameChange, index) => (
                                     <>
                                         <ColumnNameChange
                                             key={index}
@@ -779,12 +797,22 @@ export default function Export() {
                             )}
                         </div>
                     <>
-                        <button
-                            className="export-button"
-                            onClick={() => handleExport(template)}
-                        >
-                            Export
-                        </button>
+                        <br />
+                        <br />
+                        <Tippy 
+                            content={showRules ? 'Export Data' : 'No rules applied, This will export all data to CSV' }
+                            delay={showRules ? [1000, 50] : [100, 50]}
+                            className={showRules ? '' : 'no-rules-warning'}
+                            >
+                            
+                            <button
+                                className="export-button"
+                                onClick={() => handleExport(template)}
+                            >
+                                Export
+                            </button>
+                        </Tippy>
+                        
                         {!showRules && (
                             <button className="export-button" onClick={() => setShowRules(true)}>
                                 Open Rules

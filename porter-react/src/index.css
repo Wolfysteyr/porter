@@ -788,6 +788,18 @@ h6{
   transition: position 0.3s cubic-bezier(.4,2,.3,1);
 }
 
+.export-template, .export-rules{
+  border: #ffffff 1px solid;
+  border-radius: 8px;
+  background-color: #192231; /* Slate-800 */
+  box-shadow: 10px 10px 15px rgba(0, 0, 0, 0.3);
+}
+
+.export-rules, .export-template{
+  max-height: 600px;
+  overflow: auto;
+}
+
 .export-container.with-rules .export-template {
   /* Slide left when rules appear */
   transform: translateX(-80px);
@@ -882,7 +894,7 @@ h6{
   transition: width 0.3s ease, box-shadow 0.3s ease;
 }
 
-.switch-warning{
+.switch-warning, .no-rules-warning{
   max-width: 200px;
   text-align: left;
   font-size: small;
@@ -898,4 +910,7 @@ h6{
   0%, 100% { box-shadow: 0 0 12px #ff0000; border: 1px solid #ff0000; }
   50% { box-shadow: 0 0 12px #ffffff; border: 1px solid #ffffff; }
 }
+
+
+
 

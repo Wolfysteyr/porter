@@ -18,6 +18,8 @@ Route::post('/login', [AuthController::class, 'login']);
 
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 
+
+// External Database routes
 use App\Http\Controllers\ExternalDbController;
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -26,7 +28,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/databases/external/tables', [ExternalDbController::class, 'listTables']);
     Route::post('/databases/external/tables/{table}', [ExternalDbController::class, 'getTableData']);
     Route::get('/databases/external/tables/{table}/columns', [ExternalDbController::class, 'getTableColumns']);
-    Route::post('/databases/external/export', [ExternalDbController::class, 'exportData']);
+});
+
+//Export Data routes
+use App\Http\Controllers\DataExportController;
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/export', [DataExportController::class, 'checkExportType']);
 });
 
 // QueryTemplate routes
