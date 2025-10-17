@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, use } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Fragment } from 'react';
 import { useContext } from 'react';
@@ -353,6 +353,10 @@ export default function Export() {
     const { appAddress } = useContext(AppContext);
 
     const [loading, toggleLoading] = useState(false);
+
+    const [disableExport, setDisableExport] = useState(true);
+    const [countdownSeconds, setCountdownSeconds] = useState(3);
+
     
 
     const location = useLocation();
@@ -403,8 +407,25 @@ export default function Export() {
         if (location.state && location.state.template) {
             setTemplate(location.state.template);
             navigate(location.pathname, { replace: true, state: {} });
+            setDisableExport(true);
         }
     }, [location, navigate]);
+
+    // disable export button for first 3 seconds after page load and show countdown
+    useEffect(() => {
+        setDisableExport(true);
+        setCountdownSeconds(3);
+        let remaining = 3;
+        const interval = setInterval(() => {
+            remaining -= 1;
+            setCountdownSeconds(remaining);
+            if (remaining <= 0) {
+                setDisableExport(false);
+                clearInterval(interval);
+            }
+        }, 1000);
+        return () => clearInterval(interval);
+    }, []);
 
     // when rules panel is opened, populate find options
     useEffect(() => {
@@ -799,18 +820,27 @@ export default function Export() {
                     <>
                         <br />
                         <br />
+                        {disableExport && (
+                                <span style={{ marginLeft: 10, color: '#ccc', fontSize: '0.9rem' }}>
+                                   {countdownSeconds}s
+                               </span>
+                            )}
                         <Tippy 
                             content={showRules ? 'Export Data' : 'No rules applied, This will export all data to CSV' }
                             delay={showRules ? [1000, 50] : [100, 50]}
                             className={showRules ? '' : 'no-rules-warning'}
                             >
                             
+                            
                             <button
                                 className="export-button"
                                 onClick={() => handleExport(template)}
+                                disabled={disableExport}
+                                style={{ cursor: disableExport ? 'not-allowed' : 'pointer' }}
                             >
                                 Export
                             </button>
+                            
                         </Tippy>
                         
                         {!showRules && (
