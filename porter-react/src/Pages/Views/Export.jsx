@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Fragment } from 'react';
 import { useContext } from 'react';
@@ -7,10 +7,353 @@ import Select from 'react-select';
 import Tippy from '@tippyjs/react';
 import 'tippy.js/dist/tippy.css';
 import Switch from 'react-switch';
+import Modal from 'react-modal';
+
+// New: move ColumnNameChange out of Export to preserve its state across parent renders
+function ColumnNameChange({
+    nameChange,
+    index,
+    findOptions,
+    databases,
+    toggleLoading,
+    handleColumnNameChange,
+    removeColumnChange,
+    exportType,                 // <-- added
+    selectedOriginals = [],     // <-- will be passed from parent
+    selectedNew = []            // <-- will be passed from parent
+}) {
+    const { appAddress, token } = useContext(AppContext);
+    const [originalName, setOriginalName] = useState(nameChange.original ?? '');
+    const [newNameCSV, setNewNameCSV] = useState(nameChange.new ?? '');
+    const [newNameDB, setNewNameDB] = useState(nameChange.new ?? '');
+
+    const [targetDatabase, setTargetDatabase] = useState('');
+    const [dbTables, setDbTables] = useState([]);
+    const [targetTable, setTargetTable] = useState('');
+    const [dbColumns, setDbColumns] = useState([]);
+    const [targetColumn, setTargetColumn] = useState('');
+
+    // fetch tables when exportType is DB and targetDatabase changes
+    useEffect(() => {
+        (async () => {
+            if (exportType && targetDatabase) {
+                try {
+                    toggleLoading(true);
+                    const resource = await fetch(`${appAddress}/api/databases/external/tables?name=${encodeURIComponent(targetDatabase)}`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                        method: 'GET'
+                    });
+                    if (!resource.ok) throw new Error(`Status ${resource.status}`);
+                    const data = await resource.json();
+                    setDbTables(Array.isArray(data.tables) ? data.tables : []);
+                } catch (err) {
+                    console.error("Failed to fetch tables:", err);
+                    setDbTables([]);
+                } finally {
+                    toggleLoading(false);
+                }
+            } else {
+                setDbTables([]);
+            }
+        })();
+    }, [exportType, targetDatabase, appAddress, token, toggleLoading]);
+
+    // fetch columns when exportType is DB and targetTable changes
+    useEffect(() => {
+        (async () => {
+            if (exportType && targetTable) {
+                try {
+                    toggleLoading(true);
+                    const response = await fetch(`${appAddress}/api/databases/external/tables/${encodeURIComponent(targetTable)}/columns?name=${encodeURIComponent(targetDatabase)}`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                        method: 'GET'
+                    });
+                    if (!response.ok) throw new Error(`Status ${response.status}`);
+                    const data = await response.json();
+                    setDbColumns(Array.isArray(data.columns) ? data.columns : []);
+                } catch (err) {
+                    console.error("Failed to fetch columns:", err);
+                    setDbColumns([]);
+                } finally {
+                    toggleLoading(false);
+                }
+            } else {
+                setDbColumns([]);
+            }
+        })();
+    }, [exportType, targetTable, targetDatabase, appAddress, token, toggleLoading]);
+
+    // keep local fields in sync if parent updates nameChange
+    useEffect(() => {
+        setOriginalName(nameChange.original ?? '');
+        setNewNameCSV(nameChange.new ?? '');
+        setNewNameDB(nameChange.new ?? '');
+    }, [nameChange]);
+
+    // sync local edits back to parent state — only when different from parent (avoid infinite loop)
+    useEffect(() => {
+        if (typeof handleColumnNameChange === 'function') {
+            const parentOriginal = nameChange?.original ?? '';
+            const parentNew = nameChange?.new ?? '';
+            const currentNew = exportType ? (newNameDB ?? '') : (newNameCSV ?? '');
+
+            if (parentOriginal !== (originalName ?? '') || parentNew !== (currentNew ?? '')) {
+                handleColumnNameChange(index, 'original', originalName);
+                handleColumnNameChange(index, 'new', currentNew);
+            }
+        }
+    }, [
+        originalName,
+        newNameCSV,
+        newNameDB,
+        exportType,
+        index,
+        handleColumnNameChange,
+        nameChange?.original,
+        nameChange?.new
+    ]);
+
+    return (
+            <div className="column-name-change-field">
+                <button onClick={() => removeColumnChange(index)}>✖</button>
+                <span style={{fontWeight: "500", fontSize: "large", textDecoration: originalName ? "underline" : "none"}}>{originalName ? originalName : "..."}</span>
+                <br />
+                <span>Export Type</span>
+                <br />
+            
+                <div className='name-change-inputs'>
+                    {!exportType ? (
+                        <>
+                            <label>Old Column Name</label>
+                            <Select
+                                // filtered: remove columns already chosen in other entries (old or new)
+                                options={Object.keys(findOptions || {})
+                                    .filter(col => !selectedOriginals.includes(col) && !selectedNew.includes(col))
+                                    .map(col => ({ value: col, label: col }))}
+                                value={originalName ? { value: originalName, label: originalName } : null}
+                                onChange={(selected) => {
+                                    const val = selected ? selected.value : '';
+                                    setOriginalName(val);
+                                }}
+                                styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                            />
+                            {originalName && (
+                                <>
+                                    <label>New Column Name</label>
+                                    <input
+                                        type="text"
+                                        placeholder='New Column Name'
+                                        value={newNameCSV}
+                                        onChange={(e) => setNewNameCSV(e.target.value)}
+                                    />
+                                </>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            <label>Old Column Name</label>
+                            <Select
+                                options={Object.keys(findOptions || {})
+                                    .filter(col => !selectedOriginals.includes(col) && !selectedNew.includes(col))
+                                    .map(col => ({ value: col, label: col }))}
+                                value={originalName ? { value: originalName, label: originalName } : null}
+                                onChange={(selected) => {
+                                    const val = selected ? selected.value : '';
+                                    setOriginalName(val);
+                                }}
+                                styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                            />
+
+                            {originalName && (
+                                <>
+                                    <label>Target Database</label>
+                                    <select value={targetDatabase} onChange={(e) => setTargetDatabase(e.target.value)}>
+                                        <option value="">Select Database</option>
+                                        {databases.map((db) => (
+                                            <option key={db.name} value={db.name}>{db.name}</option>
+                                        ))}
+                                    </select>
+                                    {targetDatabase && (
+                                        <>
+                                            <label>Target Table</label>
+                                            <Select 
+                                                options={dbTables.map(table => ({ value: table, label: table }))}
+                                                value={targetTable ? { value: targetTable, label: targetTable } : null}
+                                                onChange={(selected) => {
+                                                    const val = selected ? selected.value : '';
+                                                    setTargetTable(val);
+                                                }}
+                                                styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                                            />
+                                            {targetTable && (
+                                                <>
+                                                    <label>New Column Name</label>
+                                                    <Select 
+                                                        // filter out columns already selected as "new" in other entries
+                                                        options={dbColumns
+                                                            .filter(col => !selectedNew.includes(col))
+                                                            .map(col => ({ value: col, label: col }))}
+                                                        value={targetColumn ? { value: targetColumn, label: targetColumn } : null}
+                                                        onChange={(selected) => {
+                                                            const val = selected ? selected.value : '';
+                                                            setTargetColumn(val);
+                                                            setNewNameDB(val);
+                                                        }}
+                                                        styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                                                    />
+                                                </>
+                                            )}
+                                        </>
+                                    )}
+                                </>
+                            )}
+                        </>
+                    )}
+                </div>
+            </div>
+    );
+}
+
+
+function FRRuleField({ rule, index, FRRules, findOptions, findOptionsLoading, removeFRRule, handleFRRuleChange }) {
+        // compute values selected by other FR rules (exclude current index)
+        const selectedValues = new Set(
+            FRRules
+                .map((r, i) => (i !== index ? r.find : null))
+                .filter(v => v !== null && v !== undefined && v !== '')
+        );
+
+        const groupedOptions = Object.entries(findOptions || {}).map(([col, vals]) => {
+            const opts = (Array.isArray(vals) ? vals : []).map((val) => {
+                const valueStr = val === null || val === undefined ? '' : String(val);
+                return { value: `${col}::${valueStr}`, label: valueStr === '' ? '<empty>' : valueStr };
+            }).filter(opt => {
+                // Always keep the option if it corresponds to the current rule's selected value
+                if (rule.find && (opt.value === rule.find || opt.value.endsWith(`::${rule.find}`))) {
+                    return true;
+                }
+                // Exclude option if any other rule has selected the same value (match by exact or endsWith '::value')
+                for (const sv of selectedValues) {
+                    if (opt.value === sv || opt.value.endsWith(`::${sv}`)) return false;
+                }
+                return true;
+            });
+
+            return { label: col, options: opts };
+        });
+
+        // find selected option object matching the stored rule.find value
+        let selectedOption = null;
+        if (rule.find) {
+            for (const group of groupedOptions) {
+                const match = group.options.find(o => o.value === rule.find || o.value.endsWith(`::${rule.find}`));
+                 if (match) {
+                     selectedOption = match;
+                     break;
+                 }
+             }
+             if (!selectedOption) {
+                const parts = rule.find.split('::');
+                const label = parts.length > 1 ? parts.slice(1).join('::') : parts[0];
+                selectedOption = { value: rule.find, label };
+             }
+         }
+
+        // local state for replace input to avoid focus loss while typing
+        const [localReplace, setLocalReplace] = React.useState(rule.replace ?? '');
+
+        // keep localReplace in sync when rule.replace changes from outside
+        React.useEffect(() => {
+            setLocalReplace(rule.replace ?? '');
+        }, [rule.replace]);
+
+        return (
+            <div className="FRrule-field">
+                <Tippy content='Find the value from the provided list, then replace it with desired text/number/value'>
+                    <span>ℹ️</span>
+                </Tippy>
+                Find & Replace
+                <button onClick={() => removeFRRule(index)}>✖</button>
+                <Select
+                    options={groupedOptions}
+                    value={selectedOption}
+                    onChange={(opt) => {
+                        const token = opt ? opt.value : '';
+                        const value = token.includes('::') ? token.split('::').slice(1).join('::') : token;
+                        handleFRRuleChange(index, 'find', value);
+                    }}
+                    isSearchable={true}
+                    isClearable={true}
+                    isLoading={findOptionsLoading}
+                    placeholder="Find... (type to search)"
+                    noOptionsMessage={() => findOptionsLoading ? 'Loading...' : 'No values'}
+                    styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                />
+                {rule.find && (
+                    <>
+                        <input
+                            type="text"
+                            placeholder="Replace with..."
+                            value={localReplace}
+                            onChange={(e) => setLocalReplace(e.target.value)}
+                            onBlur={() => handleFRRuleChange(index, "replace", localReplace)}
+                        />
+                    </>
+                )}
+                
+            </div>
+        );
+};
+
+const LimitOffsetRuleField = ({ rule, index, removeLimitOffsetRule, handleLimitOffsetChange }) => {
+        const [localLimit, setLocalLimit] = React.useState(rule.limit ?? 1000);
+        const [localOffset, setLocalOffset] = React.useState(rule.offset ?? 0);
+
+        React.useEffect(() => {
+            setLocalLimit(rule.limit ?? 1000);
+        }, [rule.limit]);
+        React.useEffect(() => {
+            setLocalOffset(rule.offset ?? 0);
+        }, [rule.offset]);
+
+        const commitLimit = () => {
+            const parsed = Number.isFinite(Number(localLimit)) ? Number(localLimit) : 1000;
+            handleLimitOffsetChange(index, 'limit', parsed);
+        };
+        const commitOffset = () => {
+            const parsed = Number.isFinite(Number(localOffset)) ? Number(localOffset) : 0;
+            handleLimitOffsetChange(index, 'offset', parsed);
+        };
+
+        return (
+            <div className="limit-offset-field">
+                Limit & Offset
+                <button onClick={() => removeLimitOffsetRule(index)}>✖</button>
+                <input
+                    type="number"
+                    value={localLimit}
+                    placeholder='Limit, default 1000'
+                    onChange={(e) => setLocalLimit(e.target.value)}
+                    onBlur={commitLimit}
+                />
+                <input
+                    type="number"
+                    value={localOffset}
+                    placeholder='Offset, default 0'
+                    onChange={(e) => setLocalOffset(e.target.value)}
+                    onBlur={commitOffset}
+                />
+            </div>
+        );
+    };
+
 
 export default function Export() {
 
     const { appAddress } = useContext(AppContext);
+
+    const [loading, toggleLoading] = useState(false);
+    
 
     const location = useLocation();
     const navigate = useNavigate();
@@ -28,6 +371,33 @@ export default function Export() {
     const [findOptions, setFindOptions] = useState({});
     const [findOptionsLoading, setFindOptionsLoading] = useState(false);
     const [findOptionsError, setFindOptionsError] = useState(false);
+
+    const [exportType, setExportType] = useState(false); // false = csv export, true = db export
+    const [showWarning, setShowWarning] = useState(false);
+
+    // export to db related
+    const [databases, setDatabases] = useState([]);
+
+    useEffect(() => {
+            (async () => {
+                try {
+                    toggleLoading(true);
+                    const response = await fetch(`${appAddress}/api/databases/external`, {
+                    headers: { Authorization: `Bearer ${token}` }, 
+                    method: 'GET'
+                });
+                if (!response.ok) throw new Error(`Status ${response.status}`);
+                    const data = await response.json();
+                    setDatabases(Array.isArray(data) ? data : []);
+                } catch (err) {
+                    console.error("Failed to fetch databases:", err);
+                    setDatabases([]);
+                } finally {
+                    toggleLoading(false);
+                }
+            }
+        )()}, []);
+   
  
     useEffect(() => {
         if (location.state && location.state.template) {
@@ -91,11 +461,12 @@ export default function Export() {
         );
     }
 
-    const handleColumnNameChange = (index, field, value) => {
+    // make handler stable to avoid re-creating function every render
+    const handleColumnNameChange = useCallback((index, field, value) => {
         setColumnNameChanges((prev) =>
             prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
         );
-    }
+    }, [setColumnNameChanges]);
 
 
     // Remove find replace rule
@@ -105,6 +476,11 @@ export default function Export() {
 
     const removeLimitOffsetRule = (index) => {
         setLimitOffsetRules((prev) => prev.filter((_, i) => i !== index));
+    }
+
+    // Remove column name change entry
+    const removeColumnChange = (index) => {
+        setColumnNameChanges((prev) => prev.filter((_, i) => i !== index));
     }
 
 
@@ -145,7 +521,7 @@ export default function Export() {
 
             // Group values by column
             const grouped = {};
-            data.rows.forEach(row => {
+            data.rows.forEach (row => {
                  Object.entries(row).forEach(([key, val]) => {
                     if (!grouped[key]) {
                         grouped[key] = new Set();
@@ -171,262 +547,10 @@ export default function Export() {
         }
     }
 
-    const FRRuleField = ({ rule, index }) => {
-        // build grouped options for react-select from findOptions state
-
-        // compute values selected by other FR rules (exclude current index)
-        const selectedValues = new Set(
-            FRRules
-                .map((r, i) => (i !== index ? r.find : null))
-                .filter(v => v !== null && v !== undefined && v !== '')
-        );
-
-        const groupedOptions = Object.entries(findOptions || {}).map(([col, vals]) => {
-            const opts = (Array.isArray(vals) ? vals : []).map((val) => {
-                const valueStr = val === null || val === undefined ? '' : String(val);
-                return { value: `${col}::${valueStr}`, label: valueStr === '' ? '<empty>' : valueStr };
-            }).filter(opt => {
-                // Always keep the option if it corresponds to the current rule's selected value
-                if (rule.find && (opt.value === rule.find || opt.value.endsWith(`::${rule.find}`))) {
-                    return true;
-                }
-                // Exclude option if any other rule has selected the same value (match by exact or endsWith '::value')
-                for (const sv of selectedValues) {
-                    if (opt.value === sv || opt.value.endsWith(`::${sv}`)) return false;
-                }
-                return true;
-            });
-
-            return { label: col, options: opts };
-        });
-
-        // find selected option object matching the stored rule.find value
-        let selectedOption = null;
-        if (rule.find) {
-            for (const group of groupedOptions) {
-                // accept either stored as 'col::value' or just 'value'
-                const match = group.options.find(o => o.value === rule.find || o.value.endsWith(`::${rule.find}`));
-                 if (match) {
-                     selectedOption = match;
-                     break;
-                 }
-             }
-             // if not found, still show the raw token so user can clear it
-             if (!selectedOption) {
-                const parts = rule.find.split('::');
-                const label = parts.length > 1 ? parts.slice(1).join('::') : parts[0];
-                selectedOption = { value: rule.find, label };
-             }
-         }
-
-        // local state for replace input to avoid focus loss while typing
-        const [localReplace, setLocalReplace] = useState(rule.replace ?? '');
-
-        // keep localReplace in sync when rule.replace changes from outside
-        useEffect(() => {
-            setLocalReplace(rule.replace ?? '');
-        }, [rule.replace]);
-
-        return (
-            <div className="FRrule-field">
-                <Tippy content='Find the value from the provided list, then replace it with desired text/number/value'>
-                    <span>ℹ️</span>
-                </Tippy>
-                Find & Replace
-                <button onClick={() => removeFRRule(index)}>✖</button>
-                <Select
-                    options={groupedOptions} // shows "column::value" in value, but excludes already selected values
-                    value={selectedOption}
-                    onChange={(opt) => {
-                        const token = opt ? opt.value : '';
-                        // extract only the value after '::' if present
-                        const value = token.includes('::') ? token.split('::').slice(1).join('::') : token;
-                        handleFRRuleChange(index, 'find', value);
-                    }}
-                    isSearchable={true}
-                    isClearable={true}
-                    isLoading={findOptionsLoading}
-                    placeholder="Find... (type to search)"
-                    noOptionsMessage={() => findOptionsLoading ? 'Loading...' : 'No values'}
-                    styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
-                />
-                {rule.find && (
-                    <>
-                        <input
-                            type="text"
-                            placeholder="Replace with..."
-                            value={localReplace}
-                            onChange={(e) => setLocalReplace(e.target.value)}
-                            onBlur={() => handleFRRuleChange(index, "replace", localReplace)}
-                        />
-                    </>
-                )}
-                
-            </div>
-        );
-    };    
+    
 
 
-    const LimitOffsetRuleField = ({ rule, index }) => {
-        // local buffering for numeric inputs to avoid focus loss while typing
-        const [localLimit, setLocalLimit] = useState(rule.limit ?? 1000);
-        const [localOffset, setLocalOffset] = useState(rule.offset ?? 0);
-
-        useEffect(() => {
-            setLocalLimit(rule.limit ?? 1000);
-        }, [rule.limit]);
-        useEffect(() => {
-            setLocalOffset(rule.offset ?? 0);
-        }, [rule.offset]);
-
-        const commitLimit = () => {
-            const parsed = Number.isFinite(Number(localLimit)) ? Number(localLimit) : 1000;
-            handleLimitOffsetChange(index, 'limit', parsed);
-        };
-        const commitOffset = () => {
-            const parsed = Number.isFinite(Number(localOffset)) ? Number(localOffset) : 0;
-            handleLimitOffsetChange(index, 'offset', parsed);
-        };
-
-        return (
-            <div className="limit-offset-field">
-                Limit & Offset
-                <button onClick={() => removeLimitOffsetRule(index)}>✖</button>
-                <input
-                    type="number"
-                    value={localLimit}
-                    placeholder='Limit, default 1000'
-                    onChange={(e) => setLocalLimit(e.target.value)}
-                    onBlur={commitLimit}
-                />
-                <input
-                    type="number"
-                    value={localOffset}
-                    placeholder='Offset, default 0'
-                    onChange={(e) => setLocalOffset(e.target.value)}
-                    onBlur={commitOffset}
-                />
-            </div>
-        );
-    };
-
-    // field for export column name change
-
-    const ColumnNameChange = ({ nameChange, index }) => {
-
-        // async function which fetches all column names from the source table
-
-
-        // async function with fetches all column names from the target database table
-
-
-        const [originalName, setOriginalName] = useState(nameChange.original);
-        const [newName, setNewName] = useState(nameChange.new);
-        const [exportType, toggleExportType] = useState(false); // false = csv export, true = db export
-        const [showWarning, setShowWarning] = useState(false);
-
-        const commitOriginal = () => {
-            handleColumnNameChange(index, 'original', originalName);
-        }
-        const commitNew = () => {
-            handleColumnNameChange(index, 'new', newName);
-        }
-
-        useEffect(() => {
-            setOriginalName("");
-        }, [exportType]);
-        useEffect(() => {
-            setNewName("");
-        }, [exportType]);
-
-
-        return (
-            <div className="column-name-change-container">
-                Change Column Name
-                <div className="column-name-change-field">
-                    <span style={{fontWeight: "500", fontSize: "large", textDecoration: originalName ? "underline" : "none"}}>{originalName ? originalName : "..."}</span>
-                    <br />
-                    <span>Export Type</span>
-                    <br />
-                    <Tippy
-                        className='switch-warning'
-                        visible={showWarning}
-                        interactive={true}
-                        placement="top"
-                        delay={[100, 50]}
-                        content={exportType ? (
-                            <div>
-                                Use this only when you know the target database structure.
-                                <br />
-                                <button onClick={() => setShowWarning(false)}>OK</button>
-                                <button onClick={() => {setShowWarning(false); toggleExportType(false);}}>Cancel</button>
-                            </div>
-                        ) : ''}> 
-                    <div>
-                     <span className={!exportType ? 'active' : ''}> CSV </span>
-                        <Switch
-                            onChange={() => {toggleExportType(!exportType); setShowWarning(!exportType);}}
-                            checked={exportType}
-                            uncheckedIcon={false}
-                            checkedIcon={false}
-                            onColor="#888888"
-                            onHandleColor="#ffffff"
-                            handleDiameter={20}
-                            height={10}
-                            width={40}
-                            onBlur={commitOriginal}
-                            // add warning if switching type to db like "only do this if you know which data goes where"
-                        />
-                        
-                        <span className={exportType ? 'active' : ''}> DB </span>
-                        </div>
-                    </Tippy>
-                    <div className='name-change-inputs'>
-                        {!exportType ? (
-                            <> 
-                                <label>Old Column Name</label>
-                                <Select
-                                    options={Object.keys(findOptions || {}).map(col => ({ value: col, label: col }))}
-                                    value={originalName ? { value: originalName, label: originalName } : null}
-                                    onChange={(selected) => setOriginalName(selected ? selected.value : '')}
-                                    styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
-
-                                />
-                                {originalName && (
-                                    <>
-                                        <label>New Column Name</label>
-                                        <input
-                                            type="text"
-                                            placeholder='New Column Name'
-                                            value={newName}
-                                            onChange={(e) => setNewName(e.target.value)}
-                                            onBlur={commitNew}
-                                        />
-                                    </>
-                                )}
-                            </>
-                        ) : (
-                            <>           
-
-                                {/* DB export mode: old column name -> target db, target table, new column name */}            
-                                <label>Old Column Name</label>
-                                <Select
-                                    options={Object.keys(findOptions || {}).map(col => ({ value: col, label: col }))}
-                                    value={originalName ? { value: originalName, label: originalName } : null}
-                                    onChange={(selected) => setOriginalName(selected ? selected.value : '')}
-                                    styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
-                                />
-
-                                
-                            </>
-
-                        )}
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
+    
 
     // destructure with safe defaults
     const {
@@ -464,6 +588,7 @@ export default function Export() {
                 find_replace_rules: FRRules,
                 limit: limitOffsetRules[0]?.limit ?? 1000, // limit to 1000 rows for performance
                 offset: limitOffsetRules[0]?.offset ?? 0,
+                column_name_changes: columnNameChanges.filter(cnc => cnc.original && cnc.new)
             }
             console.log('payload for export', payload);
             const response = await fetch(`${appAddress}/api/databases/external/export`, {
@@ -588,14 +713,65 @@ export default function Export() {
                                 <button className='add-rule-button' onClick={addNewColName}>Change Column Name</button>
 
                                 {FRRules.map((rule, index) => (
-                                    <FRRuleField key={index} rule={rule} index={index} />
+                                    <FRRuleField key={index} rule={rule} index={index} FRRules={FRRules} findOptions={findOptions} findOptionsLoading={findOptionsLoading} removeFRRule={removeFRRule} handleFRRuleChange={handleFRRuleChange} />
                                 ))}
                                 {limitOffsetRules.map((rule, index) => (
-                                    <LimitOffsetRuleField key={index} rule={rule} index={index} />
+                                    <LimitOffsetRuleField key={index} rule={rule} index={index} removeLimitOffsetRule={removeLimitOffsetRule} handleLimitOffsetChange={handleLimitOffsetChange} />
                                 ))}
+                                <div className="column-name-change-container" hidden={columnNameChanges.length === 0}>
+                                Change Column Names
+                                <Tippy
+                    className='switch-warning'
+                    visible={showWarning}
+                    interactive={true}
+                    placement="top"
+                    delay={[100, 50]}
+                    content={exportType ? (
+                        <div>
+                            Use this only when you know the target database structure.
+                            <br />
+                            <button onClick={() => setShowWarning(false)}>OK</button>
+                            <button onClick={() => {setShowWarning(false); setExportType(false);}}>Cancel</button>
+                        </div>
+                    ) : ''}>
+                <div>
+                    <span className={!exportType ? 'active' : ''}> CSV </span>
+                    <Switch
+                        onChange={() => {
+                            const next = !exportType;
+                            setExportType(next);
+                            // show warning only when switching to DB mode
+                            setShowWarning(next === true);
+                        }}
+                        checked={exportType}
+                        uncheckedIcon={false}
+                        checkedIcon={false}
+                        onColor="#888888"
+                        onHandleColor="#ffffff"
+                        handleDiameter={20}
+                        height={10}
+                        width={40}
+                    />
+                    <span className={exportType ? 'active' : ''}> DB </span>
+                </div>
+                </Tippy>
                                 {columnNameChanges.map((nameChange, index) => (
-                                    <ColumnNameChange key={index} nameChange={nameChange} index={index} />
+                                    <>
+                                        <ColumnNameChange
+                                            key={index}
+                                            nameChange={nameChange}
+                                            index={index}
+                                            findOptions={findOptions}
+                                            databases={databases}
+                                            toggleLoading={toggleLoading}
+                                            handleColumnNameChange={handleColumnNameChange}
+                                            removeColumnChange={removeColumnChange}
+                                            exportType={exportType}
+                                        />
+                                        <br />
+                                    </>
                                 ))}
+                                </div>
                                 
 
 
@@ -623,6 +799,17 @@ export default function Export() {
                     </>
                 )}
             </div>
+
+            {/* Loading modal */}
+            <Modal 
+                isOpen={loading} 
+                onRequestClose={() => toggleLoading(false)}
+                contentLabel="Loading"
+                overlayClassName={"modal-overlay"}
+                className={"loading-modal"}
+            >
+                <div className="loader"></div>
+            </Modal>
         </>
     );
 }

@@ -821,7 +821,7 @@ h6{
   border-radius: 3px;
 }
 
-.FRrule-field button, .limit-offset-field button{
+.FRrule-field button, .limit-offset-field button, .column-name-change-container button{
   background-color: #b30404; /* Red */
   color: white;
   border: none;
@@ -891,10 +891,11 @@ h6{
   border: #ffffff 1px solid;
   border-radius: 8px;
   box-shadow: 0 0 12px rgb(255, 255, 255);
-  animation: flashing 1.5s infinite;
+  animation:  flashing 1.5s infinite;
 }
 
 @keyframes flashing {
-  0%, 100% { box-shadow: 0 0 12px #ff0000; }
-  50% { box-shadow: 0 0 12px #ffffff; }
+  0%, 100% { box-shadow: 0 0 12px #ff0000; border: 1px solid #ff0000; }
+  50% { box-shadow: 0 0 12px #ffffff; border: 1px solid #ffffff; }
 }
+

@@ -1,4 +1,4 @@
-import { useContext, useState, useEffect, useCallback } from "react"
+import { useContext, useState, useEffect } from "react"
 import Select from 'react-select';
 import { AppContext } from "../../Context/AppContext"
 import { useNavigate } from "react-router-dom";
@@ -29,8 +29,8 @@ export default function Database(){
     // list of available tables in db
     const [tables, setTables] = useState([]); 
     const [databases, setDatabases] = useState([]); // for future use if internal dbs are added
-
-    const getDatabases = useCallback(async () => {
+    
+    async function getDatabases() {
         try {
             const response = await fetch(`${appAddress}/api/databases/external`, {
                 headers: { Authorization: `Bearer ${token}` }
@@ -42,7 +42,7 @@ export default function Database(){
             console.error("Failed to fetch databases:", err);
             setDatabases([]);
         }
-    }, [appAddress, token]);
+    }
 
     // new database modal vars
     const [newDBName, setNewDBName] = useState("");
@@ -159,9 +159,9 @@ export default function Database(){
      useEffect(() => {
          if (token) {
              getDatabases();
-             setSelectedDatabase(""); // default for now, later can add internal db support
+             setSelectedDatabase(""); // reset selected database on token change
          }
-     }, [token, appAddress, getDatabases]);
+     }, [token, appAddress]);
 
     // manage FKSelection: { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
     function handleFKSelection(parentCol, tableName, fkColumn) {
@@ -744,7 +744,8 @@ export default function Database(){
                 <button className="use-button" onClick={() => {handleCreateNewDatabase()}}>Create</button>
                 <button className="delete-button" onClick={() => setToggleNewDBModal(false)}>Cancel</button>
             </Modal>
-
+            
+            {/* Loading modal */}
             <Modal 
             isOpen={loading} 
             onRequestClose={() => toggleLoading(false)}
