@@ -479,7 +479,8 @@ class ExternalDbController extends Controller
             $selectPrefixQuoted = $quoteLeft . $schema . $quoteRight . '.' . $quoteLeft . $table . $quoteRight . '.';
         }
 
-        if (empty($columns)) {
+        $selectAll = empty($columns) || $columns === "*" || (is_array($columns) && in_array("*", $columns));
+        if ($selectAll) {
             $dbCols = $this->fetchColumnNames($conn, $driver, $table, $schema);
             foreach ($dbCols as $col) {
                 if (!$validateIdentifier($col)) continue;
@@ -490,6 +491,10 @@ class ExternalDbController extends Controller
                 if (!$validateIdentifier($col)) continue;
                 $selectParts[] = $selectPrefixQuoted . $quoteLeft . $col . $quoteRight . ' as ' . $quoteLeft . $col . $quoteRight;
             }
+        }
+
+        if (empty($selectParts)) {
+            return response()->json(['error' => 'No valid columns found for the table.'], 400);
         }
 
         // prepare table name for the query builder; if schema not provided, try to auto-detect owner/schema

@@ -16,7 +16,7 @@ class DataExportController extends ExternalDbController
             Log::info('ExportDataCSV called');
             return $this->exportDataCSV($request);
         } else if ($exportType === 1) {
-            // return $this->exportDataDB($request);
+            Log::info('ExportDataDB called');
         }
     }
     // exports the data from an external database table to a CSV file
@@ -101,7 +101,8 @@ class DataExportController extends ExternalDbController
             $selectPrefixQuoted = $quoteLeft . $schema . $quoteRight . '.' . $quoteLeft . $table . $quoteRight . '.';
         }
 
-        if (empty($columns)) {
+        $selectAll = empty($columns) || $columns === "*" || (is_array($columns) && in_array("*", $columns));
+        if ($selectAll) {
             $dbCols = $this->fetchColumnNames($conn, $driver, $table, $schema);
             foreach ($dbCols as $col) {
                 if (!$validateIdentifier($col)) continue;
@@ -309,6 +310,6 @@ class DataExportController extends ExternalDbController
     }
 
     public function exportDataDB(Request $request) {
-        // TODO: Implementation for exporting data to another database, including handling connections and data transformation
+        
     }
 }

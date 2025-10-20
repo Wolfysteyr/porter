@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, use } from 'react';
+import React, { useEffect, useState, useCallback} from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Fragment } from 'react';
 import { useContext } from 'react';
@@ -14,98 +14,62 @@ function ColumnNameChange({
     nameChange,
     index,
     findOptions,
-    databases,
+    targetDatabase,
+    targetTable,
+    setTargetDatabase,
+    setTargetTable,
     toggleLoading,
     handleColumnNameChange,
+    columnNameChanges,
     removeColumnChange,
-    exportType,                 // <-- added
-    selectedOriginals = [],     // <-- will be passed from parent
-    selectedNew = []            // <-- will be passed from parent
+    exportType,
+
 }) {
     const { appAddress, token } = useContext(AppContext);
     const [originalName, setOriginalName] = useState(nameChange.original ?? '');
     const [newNameCSV, setNewNameCSV] = useState(nameChange.new ?? '');
-    const [newNameDB, setNewNameDB] = useState(nameChange.new ?? '');
+    
 
-    const [targetDatabase, setTargetDatabase] = useState('');
-    const [dbTables, setDbTables] = useState([]);
-    const [targetTable, setTargetTable] = useState('');
-    const [dbColumns, setDbColumns] = useState([]);
+   const [dbColumns, setDbColumns] = useState([]);
     const [targetColumn, setTargetColumn] = useState('');
-
-    // fetch tables when exportType is DB and targetDatabase changes
-    useEffect(() => {
-        (async () => {
-            if (exportType && targetDatabase) {
-                try {
-                    toggleLoading(true);
-                    const resource = await fetch(`${appAddress}/api/databases/external/tables?name=${encodeURIComponent(targetDatabase)}`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                        method: 'GET'
-                    });
-                    if (!resource.ok) throw new Error(`Status ${resource.status}`);
-                    const data = await resource.json();
-                    setDbTables(Array.isArray(data.tables) ? data.tables : []);
-                } catch (err) {
-                    console.error("Failed to fetch tables:", err);
-                    setDbTables([]);
-                } finally {
-                    toggleLoading(false);
-                }
-            } else {
-                setDbTables([]);
-            }
-        })();
-    }, [exportType, targetDatabase, appAddress, token, toggleLoading]);
-
-    // fetch columns when exportType is DB and targetTable changes
-    useEffect(() => {
-        (async () => {
-            if (exportType && targetTable) {
-                try {
-                    toggleLoading(true);
-                    const response = await fetch(`${appAddress}/api/databases/external/tables/${encodeURIComponent(targetTable)}/columns?name=${encodeURIComponent(targetDatabase)}`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                        method: 'GET'
-                    });
-                    if (!response.ok) throw new Error(`Status ${response.status}`);
-                    const data = await response.json();
-                    setDbColumns(Array.isArray(data.columns) ? data.columns : []);
-                } catch (err) {
-                    console.error("Failed to fetch columns:", err);
-                    setDbColumns([]);
-                } finally {
-                    toggleLoading(false);
-                }
-            } else {
-                setDbColumns([]);
-            }
-        })();
-    }, [exportType, targetTable, targetDatabase, appAddress, token, toggleLoading]);
 
     // keep local fields in sync if parent updates nameChange
     useEffect(() => {
         setOriginalName(nameChange.original ?? '');
         setNewNameCSV(nameChange.new ?? '');
-        setNewNameDB(nameChange.new ?? '');
+        
+        if (!nameChange?.new) setTargetColumn('');
     }, [nameChange]);
-
-    // sync local edits back to parent state — only when different from parent (avoid infinite loop)
+    
+    // sync local edits back to parent state — avoid infinite loop by limiting when we push changes
     useEffect(() => {
-        if (typeof handleColumnNameChange === 'function') {
-            const parentOriginal = nameChange?.original ?? '';
-            const parentNew = nameChange?.new ?? '';
-            const currentNew = exportType ? (newNameDB ?? '') : (newNameCSV ?? '');
+        // CSV mode: only persist originalName immediately (select). Commit "new" onBlur to avoid rapid
+        // parent updates while typing which cause re-renders/reset and can loop.
+        if (!exportType) {
+            if (typeof handleColumnNameChange === 'function') {
+                const parentOriginal = nameChange?.original ?? '';
+                if (parentOriginal !== (originalName ?? '')) {
+                    handleColumnNameChange(index, 'original', originalName);
+                }
+            }
+            return;
+        }
 
-            if (parentOriginal !== (originalName ?? '') || parentNew !== (currentNew ?? '')) {
-                handleColumnNameChange(index, 'original', originalName);
-                handleColumnNameChange(index, 'new', currentNew);
+        // DB mode: persist original + new string
+        if (exportType) {
+            if (typeof handleColumnNameChange === 'function') {
+                const parentOriginal = nameChange?.original ?? '';
+                const parentNew = nameChange?.new ?? '';
+                if (parentOriginal !== (originalName ?? '') || parentNew !== (targetColumn ?? '')) {
+                    handleColumnNameChange(index, 'original', originalName);
+                    handleColumnNameChange(index, 'new', targetColumn);
+                }
             }
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
         originalName,
-        newNameCSV,
-        newNameDB,
+        targetColumn,
         exportType,
         index,
         handleColumnNameChange,
@@ -113,14 +77,38 @@ function ColumnNameChange({
         nameChange?.new
     ]);
 
+
+    useEffect(() => {
+        // fetch columns when targetTable changes
+        const fetchColumns = async () => {
+            if (targetTable) {
+                try {
+                    toggleLoading(true);
+                    const response = await fetch(`${appAddress}/api/databases/external/tables/${encodeURIComponent(targetTable)}/columns?name=${encodeURIComponent(targetDatabase)}`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                        method: 'GET'
+                    });
+
+                    if (!response.ok) throw new Error(`Status ${response.status}`);
+                    const data = await response.json();
+                    setDbColumns(Array.isArray(data.columns) ? data.columns : []);
+                    console.log("Fetched columns for table", targetTable, data.columns);
+                } catch (err) {
+                    console.error("Failed to fetch columns:", err);
+                    setDbColumns([]);
+                } finally {
+                    toggleLoading(false);
+                }
+            }
+        };
+        fetchColumns();
+    }, [targetTable]);
+
     return (
             <div className="column-name-change-field">
                 <span style={{fontWeight: "500", fontSize: "large", textDecoration: originalName ? "underline" : "none"}}>{originalName ? originalName : "..."}</span>
                 <button onClick={() => removeColumnChange(index)}>✖</button>
                 <br />
-                <span>Export Type</span>
-                <br />
-            
                 <div className='name-change-inputs'>
                     {!exportType ? (
                         <>
@@ -128,7 +116,7 @@ function ColumnNameChange({
                             <Select
                                 // filtered: remove columns already chosen in other entries (old or new)
                                 options={Object.keys(findOptions || {})
-                                    .filter(col => !selectedOriginals.includes(col) && !selectedNew.includes(col))
+                                    .filter(col => !nameChange?.original?.includes(col) && !nameChange?.new?.includes(col))
                                     .map(col => ({ value: col, label: col }))}
                                 value={originalName ? { value: originalName, label: originalName } : null}
                                 onChange={(selected) => {
@@ -145,64 +133,52 @@ function ColumnNameChange({
                                         placeholder='New Column Name'
                                         value={newNameCSV}
                                         onChange={(e) => setNewNameCSV(e.target.value)}
+                                        onBlur={() => {
+                                            if (typeof handleColumnNameChange === 'function') {
+                                                handleColumnNameChange(index, 'new', String(newNameCSV || '').trim());
+                                            }
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.currentTarget.blur();
+                                            }
+                                        }}
                                     />
                                 </>
                             )}
                         </>
                     ) : (
                         <>
-                            <label>Old Column Name</label>
-                            <Select
-                                options={Object.keys(findOptions || {})
-                                    .filter(col => !selectedOriginals.includes(col) && !selectedNew.includes(col))
-                                    .map(col => ({ value: col, label: col }))}
-                                value={originalName ? { value: originalName, label: originalName } : null}
-                                onChange={(selected) => {
-                                    const val = selected ? selected.value : '';
-                                    setOriginalName(val);
-                                }}
-                                styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
-                            />
-
-                            {originalName && (
+                            {targetDatabase && targetTable && (
                                 <>
-                                    <label>Target Database</label>
-                                    <select value={targetDatabase} onChange={(e) => setTargetDatabase(e.target.value)}>
-                                        <option value="">Select Database</option>
-                                        {databases.map((db) => (
-                                            <option key={db.name} value={db.name}>{db.name}</option>
-                                        ))}
-                                    </select>
-                                    {targetDatabase && (
+                                    <label>Old Column Name</label>
+                                    <Select
+                                        // filtered: remove columns already chosen in other entries (old or new)
+                                        options={Object.keys(findOptions || {})
+                                            .filter(col => !columnNameChanges.some(change => change.original === col) || col === nameChange?.original)
+                                            .map(col => ({ value: col, label: col }))}
+                                        value={originalName ? { value: originalName, label: originalName } : null}
+                                        onChange={(selected) => {
+                                            const val = selected ? selected.value : '';
+                                            setOriginalName(val);
+                                        }}
+                                        styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                                    />
+                                    {originalName && (
                                         <>
-                                            <label>Target Table</label>
-                                            <Select 
-                                                options={dbTables.map(table => ({ value: table, label: table }))}
-                                                value={targetTable ? { value: targetTable, label: targetTable } : null}
+                                            <label>New Column Name</label>
+                                            <Select
+                                                // filter out columns already selected as "new" in other entries
+                                                options={dbColumns
+                                                    .filter(col => !columnNameChanges.some(change => change.new === col && change !== nameChange))
+                                                    .map(col => ({ value: col, label: col }))}
+                                                value={targetColumn ? { value: targetColumn, label: targetColumn } : null}
                                                 onChange={(selected) => {
                                                     const val = selected ? selected.value : '';
-                                                    setTargetTable(val);
+                                                    setTargetColumn(val);
                                                 }}
                                                 styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
                                             />
-                                            {targetTable && (
-                                                <>
-                                                    <label>New Column Name</label>
-                                                    <Select 
-                                                        // filter out columns already selected as "new" in other entries
-                                                        options={dbColumns
-                                                            .filter(col => !selectedNew.includes(col))
-                                                            .map(col => ({ value: col, label: col }))}
-                                                        value={targetColumn ? { value: targetColumn, label: targetColumn } : null}
-                                                        onChange={(selected) => {
-                                                            const val = selected ? selected.value : '';
-                                                            setTargetColumn(val);
-                                                            setNewNameDB(val);
-                                                        }}
-                                                        styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
-                                                    />
-                                                </>
-                                            )}
                                         </>
                                     )}
                                 </>
@@ -211,8 +187,53 @@ function ColumnNameChange({
                     )}
                 </div>
             </div>
-    );
+        );
 }
+
+
+                        // <>
+                        //     <label>Old Column Name</label>
+                        //     <Select
+                        //         options={Object.keys(findOptions || {})
+                        //         .filter(col => !columnNameChanges.some(change => change.original === col) || col === nameChange?.original)
+                        //         .map(col => ({ value: col, label: col }))}
+                        //         value={originalName ? { value: originalName, label: originalName } : null}
+                        //         onChange={(selected) => {
+                        //             const val = selected ? selected.value : '';
+                        //             setOriginalName(val);
+                        //         }}
+                        //         styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                        //     />
+
+                        //     {originalName && (
+                        //         <>
+                        //                     {targetTable && (
+                        //                         <>
+                        //                             <label>New Column Name</label>
+                        //                             <Select 
+                        //                                 // filter out columns already selected as "new" in other entries
+                        //                                 options={dbColumns
+                        //                                     .filter(col => !columnNameChanges.some(change => change.new === col && change !== nameChange))
+                        //                                     .map(col => ({ value: col, label: col }))}
+                        //                                 value={targetColumn ? { value: targetColumn, label: targetColumn } : null}
+                        //                                 onChange={(selected) => {
+                        //                                     const val = selected ? selected.value : '';
+                        //                                     setTargetColumn(val);
+                        //                                     if (typeof handleColumnNameChange === 'function') {
+                        //                                         handleColumnNameChange(index, 'new', val);
+                        //                                     }
+                        //                                 }}
+                        //                                 styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                        //                             />
+                        //                         </>
+                        //                     )}
+                        //                 </>
+                        //             )}
+                        //         </>
+                        //     )}
+                        // </>
+                 
+           
 
 
 function FRRuleField({ rule, index, FRRules, findOptions, findOptionsLoading, removeFRRule, handleFRRuleChange }) {
@@ -366,10 +387,11 @@ export default function Export() {
     
     const [FRRules, setFRRules] = useState([]); // { find: string, replace: string }, holds find/replace rules
     const [limitOffsetRules, setLimitOffsetRules] = useState([]); // { limit: number, offset: number }, holds limit/offset rule
-    const [columnNameChangesCSV, setColumnNameChangesCSV] = useState([]); // { original: string, new: string }, holds list of column name changes (CSV)
+    const [columnNameChanges, setColumnNameChanges] = useState([]); // { original: string, new: string }, holds list of column name changes
+    
     const [showRules, setShowRules] = useState(false);
 
-    const { token }  = useContext(AppContext);
+    const { token } = useContext(AppContext);
 
     // find options grouped by column: { columnName: [val, ...] }
     const [findOptions, setFindOptions] = useState({});
@@ -381,6 +403,38 @@ export default function Export() {
 
     // export to db related
     const [databases, setDatabases] = useState([]);
+    const [targetDatabase, setTargetDatabase] = useState('');
+    const [dbTables, setDbTables] = useState([]);
+    const [targetTable, setTargetTable] = useState('');
+    const [showColumnWindow, setShowColumnWindow] = useState(false);
+
+
+
+        useEffect(() => {
+            // fetch tables when targetDatabase changes
+            const fetchTables = async () => {
+                if (targetDatabase) {
+                    try {
+                        toggleLoading(true);
+                        const response = await fetch(`${appAddress}/api/databases/external/tables?name=${encodeURIComponent(targetDatabase)}`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                            method: 'GET'
+                        });
+                        if (!response.ok) throw new Error(`Status ${response.status}`);
+                        const data = await response.json();
+                    setDbTables(Array.isArray(data.tables) ? data.tables : []);
+                    console.log("Fetched tables for database", targetDatabase, data.tables);
+                } catch (err) {
+                    console.error("Failed to fetch databases:", err);
+                    setDbTables([]);
+                } finally {
+                    toggleLoading(false);
+                }
+                }
+            };
+            fetchTables();
+        }, [targetDatabase]);
+
 
     useEffect(() => {
             (async () => {
@@ -464,9 +518,14 @@ export default function Export() {
         setLimitOffsetRules((prev) => [...prev, { limit: 1000, offset: 0 }]);
     }
 
-    const addNewColName = () => {
-        setColumnNameChangesCSV((prev) => [...prev, { original: "", new: "" }]);
+    const addColNameRule = () => {
+        setColumnNameChanges((prev) => [...prev, { original: "", new: "" }]);
     }
+
+    const addNewColNameChange = () => {
+        setColumnNameChanges((prev) => [...prev, { original: "", new: "" }]);
+    }
+
 
  
     const handleFRRuleChange = (index, field, value) => {
@@ -484,10 +543,10 @@ export default function Export() {
 
     // make handler stable to avoid re-creating function every render
     const handleColumnNameChange = useCallback((index, field, value) => {
-        setColumnNameChangesCSV((prev) =>
+        setColumnNameChanges((prev) =>
             prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
         );
-    }, [setColumnNameChangesCSV]);
+    }, []);
 
 
     // Remove find replace rule
@@ -501,7 +560,7 @@ export default function Export() {
 
     // Remove column name change entry
     const removeColumnChange = (index) => {
-        setColumnNameChangesCSV((prev) => prev.filter((_, i) => i !== index));
+        setColumnNameChanges((prev) => prev.filter((_, i) => i !== index));
     }
 
 
@@ -610,8 +669,10 @@ export default function Export() {
                 find_replace_rules: FRRules,
                 limit: limitOffsetRules[0]?.limit ?? 1000, // limit to 1000 rows for performance
                 offset: limitOffsetRules[0]?.offset ?? 0,
-                column_name_changes: !exportType ? columnNameChangesCSV.filter(c => c.original && c.new) : [], // add handling for db export
-                exportType: exportType
+                column_name_changes: columnNameChanges.filter(c => c.original && c.new), // only include entries with both original and new names
+                exportType: exportType ?? 0,
+                target_database: exportType ? template.target_database : undefined,
+                target_table: exportType ? template.target_table : undefined
             }
             console.log('payload for export', payload);
             const response = await fetch(`${appAddress}/api/export`, {
@@ -628,22 +689,21 @@ export default function Export() {
                 console.error('Export failed with status:', response.status);
                 throw new Error('Failed to export data');
             }
-            if (exportType) {
-                alert('Data exported to target database successfully.');
-                navigate('/templates', { state: { message: 'Data exported to target database successfully.' } });
-                return;
+            if (!exportType) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${template.name}_export.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                navigate('/templates', { state: { message: `Export successful! Exported to ${template.name + '_export.csv'}` } });
+            } else {
+                const data = await response.json();
+                navigate('/templates', { state: { message: `Export successful! Exported to  ${targetDatabase}, table ${targetTable}` } });
             }
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${template.name}_export.csv`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
-            navigate('/templates', { state: { message: `Export successful! Exported to ${template.name + '_export.csv'}` } });
-
         } catch (error) {
             console.error('Error exporting data:', error);
             alert('Error exporting data. Please try again later.');
@@ -742,23 +802,6 @@ export default function Export() {
                             {showRules && (
                             <div className='export-rules'>
                                 <h3>Export Rules</h3>
-                                <button className="add-rule-button" onClick={addFRRule}>Add New F&R Rule</button>
-                                <button className='add-rule-button' onClick={addLimitOffset} disabled={limitOffsetRules.length >= 1}>Add Limit/Offset</button>
-                                <button className='add-rule-button' onClick={addNewColName}>Change Column Name</button>
-
-                                {FRRules.map((rule, index) => (
-                                    <FRRuleField key={index} rule={rule} index={index} FRRules={FRRules} findOptions={findOptions} findOptionsLoading={findOptionsLoading} removeFRRule={removeFRRule} handleFRRuleChange={handleFRRuleChange} />
-                                ))}
-                                {limitOffsetRules.map((rule, index) => (
-                                    <LimitOffsetRuleField key={index} rule={rule} index={index} removeLimitOffsetRule={removeLimitOffsetRule} handleLimitOffsetChange={handleLimitOffsetChange} />
-                                ))}
-                                <div className="column-name-change-container" hidden={columnNameChangesCSV.length === 0}>
-                                <Tippy content={<span>It is also recommended to use this when you don't need to change column names for the sake of correctness.</span>}>
-                                    <span>ℹ️</span>
-                                </Tippy>    
-                                Change Column Names 
-                                
-                                <br />
                                 <Tippy
                                     className='switch-warning'
                                     visible={showWarning}
@@ -794,23 +837,91 @@ export default function Export() {
                                     <span className={exportType ? 'active' : ''}> DB </span>
                                 </div>
                                 </Tippy>
-                                {columnNameChangesCSV.map((nameChange, index) => (
-                                    <>
-                                        <ColumnNameChange
-                                            key={index}
-                                            nameChange={nameChange}
-                                            index={index}
-                                            findOptions={findOptions}
-                                            databases={databases}
-                                            toggleLoading={toggleLoading}
-                                            handleColumnNameChange={handleColumnNameChange}
-                                            removeColumnChange={removeColumnChange}
-                                            exportType={exportType}
-                                        />
-                                        <br />
-                                    </>
+                                <button className="add-rule-button" onClick={addFRRule}>Add New F&R Rule</button>
+                                <button className='add-rule-button' onClick={addLimitOffset} disabled={limitOffsetRules.length >= 1}>Add Limit/Offset</button>
+                                <button className='add-rule-button' onClick={() => setShowColumnWindow(true)}>Change Column Names</button>
+
+                                {FRRules.map((rule, index) => (
+                                    <FRRuleField key={index} rule={rule} index={index} FRRules={FRRules} findOptions={findOptions} findOptionsLoading={findOptionsLoading} removeFRRule={removeFRRule} handleFRRuleChange={handleFRRuleChange} />
                                 ))}
-                                </div>
+                                {limitOffsetRules.map((rule, index) => (
+                                    <LimitOffsetRuleField key={index} rule={rule} index={index} removeLimitOffsetRule={removeLimitOffsetRule} handleLimitOffsetChange={handleLimitOffsetChange} />
+                                ))}
+                                {/* Change Column Names window - only visible when opened */}
+                                {showColumnWindow && (
+                                    <div className="column-name-change-window">
+                                        <Tippy content={<span>It is also recommended to use this when you don't need to change column names for the sake of correctness.</span>}>
+                                            <span>ℹ️</span>
+                                        </Tippy>
+                                        <strong style={{ marginLeft: 6 }}>Change Column Names</strong>
+
+                                        {/* DB/Table selectors only in DB export mode */}
+                                        {exportType && (
+                                            <div style={{ marginTop: '0.5rem' }}>
+                                                <label>Target Database</label>
+                                                <Select
+                                                    options={(databases || [])
+                                                        .filter(d => d.name !== template.database) // filters out the template database
+                                                        .map(d => ({ value: d.name ?? d, label: d.name ?? d }))}
+                                                    value={targetDatabase ? { value: targetDatabase, label: targetDatabase } : null}
+                                                    onChange={(opt) => { const val = opt ? opt.value : ''; setTargetDatabase(val); setTargetTable(''); setDbTables([]); }}
+                                                    styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                                                />
+                                                {targetDatabase && (
+                                                    <>
+                                                        <label>Target Table</label>
+                                                        <Select
+                                                            options={(dbTables || []).map(t => ({ value: t, label: t }))}
+                                                            value={targetTable ? { value: targetTable, label: targetTable } : null}
+                                                            onChange={(opt) => setTargetTable(opt ? opt.value : '')}
+                                                            styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                                                        />
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+                                            <button onClick={() => {
+                                                // Close window and clear all column changes
+                                                setShowColumnWindow(false);
+                                                setColumnNameChanges([]);
+                                                setTargetDatabase('');
+                                                setTargetTable('');
+                                                setDbTables([]);
+                                            }}>Close Window</button>
+
+                                            <button onClick={() => setColumnNameChanges(prev => [...prev, { original: '', new: '' }])}>Add Column</button>
+                                        </div>
+
+                                        <div style={{ marginTop: '0.75rem' }}>
+                                            {columnNameChanges.length === 0 && <div style={{ color: '#999' }}>No columns added yet.</div>}
+
+                                            {columnNameChanges.map((nameChange, index) => (
+                                                // show mapping rows only if CSV mode OR (DB mode + both DB & table selected)
+                                                ((!exportType) || (exportType && targetDatabase && targetTable)) && (
+                                                    <React.Fragment key={index}>
+                                                        <ColumnNameChange
+                                                            nameChange={nameChange}
+                                                            index={index}
+                                                            findOptions={findOptions}
+                                                            toggleLoading={toggleLoading}
+                                                            handleColumnNameChange={handleColumnNameChange}
+                                                            columnNameChanges={columnNameChanges}
+                                                            removeColumnChange={removeColumnChange}
+                                                            exportType={exportType}
+                                                            targetDatabase={targetDatabase}
+                                                            targetTable={targetTable}
+                                                            setTargetDatabase={setTargetDatabase}
+                                                            setTargetTable={setTargetTable}
+                                                        />
+                                                        <br />
+                                                    </React.Fragment>
+                                                )
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                                 
 
 
