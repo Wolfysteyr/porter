@@ -23,10 +23,10 @@ class ExternalDbController extends Controller
 
         $testConfig = [
             'driver' => $validated['driver'],
-            'host' => $validated['host'],
+            'host' => $validated['host']!= "" ? $validated['host'] : 'localhost',
             'port' => $validated['port'] != "" ? $validated['port'] : 3306,
             'database' => $validated['name'], // use 'name' as database name
-            'username' => $validated['username'],
+            'username' => $validated['username'] != "" ? $validated['username'] : 'root',
             'password' => $validated['password'],
             'charset' => config('database.connections.' . $validated['driver'] . '.charset', 'utf8mb4'),
             'collation' => config('database.connections.' . $validated['driver'] . '.collation', 'utf8mb4_unicode_ci'),
