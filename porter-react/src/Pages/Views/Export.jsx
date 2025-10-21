@@ -16,8 +16,6 @@ function ColumnNameChange({
     findOptions,
     targetDatabase,
     targetTable,
-    setTargetDatabase,
-    setTargetTable,
     toggleLoading,
     handleColumnNameChange,
     columnNameChanges,
@@ -107,7 +105,7 @@ function ColumnNameChange({
     return (
             <div className="column-name-change-field">
                 <span style={{fontWeight: "500", fontSize: "large", textDecoration: originalName ? "underline" : "none"}}>{originalName ? originalName : "..."}</span>
-                <button onClick={() => removeColumnChange(index)}>✖</button>
+                <button onClick={() => removeColumnChange(index)} className='remove-rule-button'>✖</button>
                 <br />
                 <div className='name-change-inputs'>
                     {!exportType ? (
@@ -294,7 +292,7 @@ function FRRuleField({ rule, index, FRRules, findOptions, findOptionsLoading, re
                     <span>ℹ️</span>
                 </Tippy>
                 Find & Replace
-                <button onClick={() => removeFRRule(index)}>✖</button>
+                <button onClick={() => removeFRRule(index)} className='remove-rule-button'>✖</button>
                 <Select
                     options={groupedOptions}
                     value={selectedOption}
@@ -349,7 +347,7 @@ const LimitOffsetRuleField = ({ rule, index, removeLimitOffsetRule, handleLimitO
         return (
             <div className="limit-offset-field">
                 Limit & Offset
-                <button onClick={() => removeLimitOffsetRule(index)}>✖</button>
+                <button onClick={() => removeLimitOffsetRule(index)} className='remove-rule-button'>✖</button>
                 <input
                     type="number"
                     value={localLimit}
@@ -399,6 +397,16 @@ export default function Export() {
     const [findOptionsError, setFindOptionsError] = useState(false);
 
     const [exportType, setExportType] = useState(false); // false = csv export, true = db export
+
+    const toggleExportType = () => {
+        setExportType(prev => !prev);
+        setColumnNameChanges([]);
+        if (exportType) {
+            setColumnNameChanges(prev => [...prev, { original: '', new: '' }]);
+        }
+
+    };
+
     const [showWarning, setShowWarning] = useState(false);
 
     // export to db related
@@ -518,13 +526,7 @@ export default function Export() {
         setLimitOffsetRules((prev) => [...prev, { limit: 1000, offset: 0 }]);
     }
 
-    const addColNameRule = () => {
-        setColumnNameChanges((prev) => [...prev, { original: "", new: "" }]);
-    }
-
-    const addNewColNameChange = () => {
-        setColumnNameChanges((prev) => [...prev, { original: "", new: "" }]);
-    }
+ 
 
 
  
@@ -671,8 +673,8 @@ export default function Export() {
                 offset: limitOffsetRules[0]?.offset ?? 0,
                 column_name_changes: columnNameChanges.filter(c => c.original && c.new), // only include entries with both original and new names
                 exportType: exportType ?? 0,
-                target_database: exportType ? template.target_database : undefined,
-                target_table: exportType ? template.target_table : undefined
+                target_database: exportType ? targetDatabase : undefined,
+                target_table: exportType ? targetTable : undefined
             }
             console.log('payload for export', payload);
             const response = await fetch(`${appAddress}/api/export`, {
@@ -806,24 +808,23 @@ export default function Export() {
                                     className='switch-warning'
                                     visible={showWarning}
                                     interactive={true}
-                                    placement="top"
+                                    placement="bottom"
                                     delay={[100, 50]}
                                     content={exportType ? (
                                         <div>
                                             Use this only when you know the target database structure.
                                             <br />
                                             <button onClick={() => setShowWarning(false)}>OK</button>
-                                            <button onClick={() => {setShowWarning(false); setExportType(false);}}>Cancel</button>
+                                            <button onClick={() => {setShowWarning(false); toggleExportType();}}>Cancel</button>
                                         </div>
                                     ) : ''}>
                                 <div>
                                     <span className={!exportType ? 'active' : ''}> CSV </span>
                                     <Switch
                                         onChange={() => {
-                                            const next = !exportType;
-                                            setExportType(next);
+                                            toggleExportType();
                                             // show warning only when switching to DB mode
-                                            setShowWarning(next === true);
+                                            setShowWarning(!exportType);
                                         }}
                                         checked={exportType}
                                         uncheckedIcon={false}
@@ -836,29 +837,14 @@ export default function Export() {
                                     />
                                     <span className={exportType ? 'active' : ''}> DB </span>
                                 </div>
+
+
+                                {/* TODO FIX: when closing Change Column Names window, target db and table get reset, when they shouldn't */}
                                 </Tippy>
-                                <button className="add-rule-button" onClick={addFRRule}>Add New F&R Rule</button>
-                                <button className='add-rule-button' onClick={addLimitOffset} disabled={limitOffsetRules.length >= 1}>Add Limit/Offset</button>
-                                <button className='add-rule-button' onClick={() => setShowColumnWindow(true)}>Change Column Names</button>
-
-                                {FRRules.map((rule, index) => (
-                                    <FRRuleField key={index} rule={rule} index={index} FRRules={FRRules} findOptions={findOptions} findOptionsLoading={findOptionsLoading} removeFRRule={removeFRRule} handleFRRuleChange={handleFRRuleChange} />
-                                ))}
-                                {limitOffsetRules.map((rule, index) => (
-                                    <LimitOffsetRuleField key={index} rule={rule} index={index} removeLimitOffsetRule={removeLimitOffsetRule} handleLimitOffsetChange={handleLimitOffsetChange} />
-                                ))}
-                                {/* Change Column Names window - only visible when opened */}
-                                {showColumnWindow && (
-                                    <div className="column-name-change-window">
-                                        <Tippy content={<span>It is also recommended to use this when you don't need to change column names for the sake of correctness.</span>}>
-                                            <span>ℹ️</span>
-                                        </Tippy>
-                                        <strong style={{ marginLeft: 6 }}>Change Column Names</strong>
-
-                                        {/* DB/Table selectors only in DB export mode */}
+                                {/* DB/Table selectors only in DB export mode */}
                                         {exportType && (
                                             <div style={{ marginTop: '0.5rem' }}>
-                                                <label>Target Database</label>
+                                                <label>Target Database</label>  {!targetDatabase && <span className='attention'>!</span>}
                                                 <Select
                                                     options={(databases || [])
                                                         .filter(d => d.name !== template.database) // filters out the template database
@@ -869,30 +855,49 @@ export default function Export() {
                                                 />
                                                 {targetDatabase && (
                                                     <>
-                                                        <label>Target Table</label>
+                                                        <label>Target Table</label>  {!targetTable && <span className='attention'>!</span>}
                                                         <Select
                                                             options={(dbTables || []).map(t => ({ value: t, label: t }))}
                                                             value={targetTable ? { value: targetTable, label: targetTable } : null}
-                                                            onChange={(opt) => setTargetTable(opt ? opt.value : '')}
+                                                            onChange={(opt) => {setTargetTable(opt ? opt.value : ''); }}
                                                             styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
                                                         />
                                                     </>
                                                 )}
                                             </div>
                                         )}
+                                <button className="add-rule-button" onClick={addFRRule}>Add New F&R Rule</button> <span/>
+                                <button className='add-rule-button' onClick={addLimitOffset} disabled={limitOffsetRules.length >= 1}>Add Limit/Offset</button> <span/>
+                                <button className='add-rule-button' onClick={() => { setShowColumnWindow(true); setColumnNameChanges(prev => [...prev, { original: '', new: '' }]) }} disabled={showColumnWindow}>Change Column Names</button> {!showColumnWindow && exportType && <span className='attention'>!</span>}
 
-                                        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
-                                            <button onClick={() => {
+                                {FRRules.map((rule, index) => (
+                                    <FRRuleField key={index} rule={rule} index={index} FRRules={FRRules} findOptions={findOptions} findOptionsLoading={findOptionsLoading} removeFRRule={removeFRRule} handleFRRuleChange={handleFRRuleChange} />
+                                ))}
+                                {limitOffsetRules.map((rule, index) => (
+                                    <LimitOffsetRuleField key={index} rule={rule} index={index} removeLimitOffsetRule={removeLimitOffsetRule} handleLimitOffsetChange={handleLimitOffsetChange} />
+                                ))}
+                                {/* Change Column Names window - only visible when opened */}
+                                {showColumnWindow && (
+                                    <div className="column-name-change-container">
+                                        <Tippy content={ exportType ? 
+                                            <span>It is recommended to use this as sometimes column names may not align perfectly with the target schema, causing data loss.</span>
+                                            : 
+                                            <span>This will rename columns in the exported CSV file.</span>}>
+                                            <span>ℹ️</span>
+                                        </Tippy>
+                                        <strong style={{ marginLeft: 6 }}>Change Column Names</strong>
+                                        <button onClick={() => {
                                                 // Close window and clear all column changes
                                                 setShowColumnWindow(false);
                                                 setColumnNameChanges([]);
                                                 setTargetDatabase('');
                                                 setTargetTable('');
                                                 setDbTables([]);
-                                            }}>Close Window</button>
+                                            }} className='remove-rule-button'>✖</button>
 
-                                            <button onClick={() => setColumnNameChanges(prev => [...prev, { original: '', new: '' }])}>Add Column</button>
-                                        </div>
+                                        
+
+                                        
 
                                         <div style={{ marginTop: '0.75rem' }}>
                                             {columnNameChanges.length === 0 && <div style={{ color: '#999' }}>No columns added yet.</div>}
@@ -900,7 +905,7 @@ export default function Export() {
                                             {columnNameChanges.map((nameChange, index) => (
                                                 // show mapping rows only if CSV mode OR (DB mode + both DB & table selected)
                                                 ((!exportType) || (exportType && targetDatabase && targetTable)) && (
-                                                    <React.Fragment key={index}>
+                                                    <>
                                                         <ColumnNameChange
                                                             nameChange={nameChange}
                                                             index={index}
@@ -912,13 +917,19 @@ export default function Export() {
                                                             exportType={exportType}
                                                             targetDatabase={targetDatabase}
                                                             targetTable={targetTable}
-                                                            setTargetDatabase={setTargetDatabase}
-                                                            setTargetTable={setTargetTable}
                                                         />
                                                         <br />
-                                                    </React.Fragment>
+
+                                                        </>
+                                                        
                                                 )
                                             ))}
+                                           {targetDatabase && targetTable ? (
+                                               <button onClick={() => setColumnNameChanges(prev => [...prev, { original: '', new: '' }])}>Add Column</button>
+                                           ) : (
+                                               <div style={{ color: '#999' }}>Select a database and table to add columns.</div>
+                                           )}
+
                                         </div>
                                     </div>
                                 )}

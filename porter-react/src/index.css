@@ -774,6 +774,7 @@ h6{
 .export-container{
   display: flex;
   justify-content: center;
+  overflow: show;
 }
 
 .export-container .export-rules{
@@ -793,12 +794,10 @@ h6{
   border-radius: 8px;
   background-color: #192231; /* Slate-800 */
   box-shadow: 10px 10px 15px rgba(0, 0, 0, 0.3);
-}
-
-.export-rules, .export-template{
   max-height: 600px;
   overflow: auto;
 }
+
 
 .export-container.with-rules .export-template {
   /* Slide left when rules appear */
@@ -833,7 +832,7 @@ h6{
   border-radius: 3px;
 }
 
-.FRrule-field button, .limit-offset-field button, .column-name-change-container button{
+.remove-rule-button {
   background-color: #b30404; /* Red */
   color: white;
   border: none;
@@ -876,7 +875,6 @@ h6{
   margin-bottom: 0.5rem;
   border: rgba(255, 255, 255, 0.322) 1px solid;
   border-radius: 3px;
-  background-color: #353d49;
 }
 
 .column-name-change-container .active{
@@ -909,6 +907,45 @@ h6{
 @keyframes flashing {
   0%, 100% { box-shadow: 0 0 12px #ff0000; border: 1px solid #ff0000; }
   50% { box-shadow: 0 0 12px #ffffff; border: 1px solid #ffffff; }
+}
+
+/* Use transform and text-shadow for the attention animation so
+   surrounding layout isn't affected. Avoid animating font-size. */
+@keyframes attention-anim {
+  0%, 100% {
+    transform: translateY(0);
+    text-shadow: 0 0 6px #ffff66, 0 0 10px rgba(255,255,150,0.6);
+    color: #fff;
+  }
+  40% {
+    transform: translateY(-6px);
+    text-shadow: 0 0 14px #fff47a, 0 0 22px rgba(255,255,140,0.75);
+    color: #f2ff00;
+  }
+  60% {
+    transform: translateY(0px);
+    text-shadow: 0 0 10px #fff07a, 0 0 18px rgba(255,255,130,0.65);
+    color: #f2ff00;
+  }
+  70% {
+    transform: translateY(-4px);
+    text-shadow: 0 0 12px #fff27a, 0 0 20px rgba(255,255,140,0.7);
+    color: #ffff66;
+  }
+  
+}
+
+.attention {
+  display: inline-block; /* keep it out of normal inline flow transforms only affect this box */
+  vertical-align: middle;
+  transform-origin: center bottom;
+  will-change: transform, text-shadow; /* hint the browser for smoother animation */
+  animation: attention-anim 1.4s ease-in-out infinite;
+  padding: 0 0 0.5rem 0;
+}
+
+.wanring-select {
+  animation: flashing 1.5s infinite;
 }
 
 
