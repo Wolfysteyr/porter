@@ -1,4 +1,4 @@
-import { useContext, useState } from "react"
+import { useContext } from "react"
 import { AppContext } from "../Context/AppContext"
 import App from "../App"
 import {Link, useNavigate} from "react-router-dom"
@@ -24,8 +24,7 @@ export default function Home(){
                     {/* <Link to="/db" className="button">Database Data</Link> */}
                     <button onClick={() => navigate('/tqb')}>Table Query Builder</button> <br /> <br />
                     <button onClick={() => navigate('/templates')}> Query Templates</button> <br /> <br />
-                    <button onClick={() => navigate('/export')}>[WIP]Export Database</button>   <br /> <br />
-                    <button onClick={() => navigate('/exports')}>[WIP]Exports</button>   <br /> <br />
+                    <button onClick={() => navigate('/databases')}> Databases</button>   <br /> <br />
                 </div>
             ) : 
                 <h2 className="title">Please log in to continue.</h2>

@@ -35,7 +35,7 @@ class ExternalDbController extends Controller
             'engine' => null,
         ];
 
-        
+
 
         $connName = 'test_external_' . uniqid();
         config(["database.connections.$connName" => $testConfig]);
@@ -108,6 +108,107 @@ class ExternalDbController extends Controller
         $dbs = ExternalDatabase::all();
         return response()->json($dbs);
     }
+
+    /**
+     * RESTful index wrapper for front-end: GET /api/external-databases
+     */
+    public function index()
+    {
+        return $this->listExternalDbs();
+    }
+
+    /**
+     * RESTful store wrapper for creating external DB via API: POST /api/external-databases
+     */
+    public function store(Request $request)
+    {
+        return $this->createExternalDb($request);
+    }
+
+    /**
+     * Update an existing external database configuration (with connection test)
+     */
+    public function updateExternalDb(Request $request, $id)
+    {
+        $external = ExternalDatabase::find($id);
+        if (!$external) {
+            abort(404, 'External database not found');
+        }
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:external_databases,name,' . $external->id,
+            'description' => 'nullable|string|max:100',
+            'driver' => 'required|string|in:mysql,pgsql,sqlsrv,sqlite,mariadb,oracle',
+            'host' => 'required|string|max:255',
+            'port' => 'nullable|integer',
+            'username' => 'required|string|max:255',
+            'password' => 'nullable|string|max:255',
+        ]);
+
+        // test the provided credentials before saving
+        $testConfig = [
+            'driver' => $validated['driver'],
+            'host' => $validated['host'],
+            'port' => $validated['port'] != "" ? $validated['port'] : 3306,
+            'database' => $validated['name'],
+            'username' => $validated['username'],
+            'password' => $validated['password'],
+            'charset' => config('database.connections.' . $validated['driver'] . '.charset', 'utf8mb4'),
+            'collation' => config('database.connections.' . $validated['driver'] . '.collation', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'strict' => true,
+            'engine' => null,
+        ];
+
+        $connName = 'test_external_' . uniqid();
+        config(["database.connections.$connName" => $testConfig]);
+
+        try {
+            DB::connection($connName)->getPdo();
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Could not connect to the database with provided credentials.',
+                'details' => $e->getMessage()
+            ], 422);
+        }
+
+        $external->update($validated);
+
+        return response()->json($external);
+    }
+
+    /**
+     * Delete an external database configuration
+     */
+    public function deleteExternalDb($id)
+    {
+        $external = ExternalDatabase::find($id);
+        if (!$external) {
+            abort(404, 'External database not found');
+        }
+
+        $external->delete();
+
+        return response()->json(['message' => 'Deleted'], 200);
+    }
+
+    /**
+     * RESTful destroy wrapper for DELETE /api/external-databases/{id}
+     */
+    public function destroy($id)
+    {
+        return $this->deleteExternalDb($id);
+    }
+
+    /**
+     * RESTful update wrapper for PUT/PATCH /api/external-databases/{id}
+     */
+    public function update(Request $request, $id)
+    {
+        return $this->updateExternalDb($request, $id);
+    }
+
+
     /**
      * Get a DB connection for a given external database identifier.
      */
@@ -425,7 +526,7 @@ class ExternalDbController extends Controller
         $limit      = $request->input('limit', 10);
         $foreign_keys  = $request->input('foreign_keys', []);
         $whereConds = $request->input('where', []);
-        
+
 
         // validation for table and column names to prevent SQL injection
         $validateIdentifier = function($name) {
@@ -682,5 +783,5 @@ class ExternalDbController extends Controller
             'foreignKeys' => $formattedForeignKeys
         ]);
     }
-    
+
 }

@@ -45,11 +45,11 @@ export default function Templates() {
     const [editSelectedTable, setEditSelectedTable] = useState('');
     const [editSelectedDatabase, setEditSelectedDatabase] = useState('');
     const [editTableCols, setEditTableCols] = useState([]);
-    const [editForeignKeys, setEditForeignKeys] = useState([]); // same shape as Database.jsx
+    const [editForeignKeys, setEditForeignKeys] = useState([]); // same shape as TQB.jsx
     const [editRowLimit, setEditRowLimit] = useState(0);
     const [editSelectedCols, setEditSelectedCols] = useState([]);
     const [editSelectedWhere, setEditSelectedWhere] = useState([]);
-    const [editFKSelection, setEditFKSelection] = useState([]); // same shape as Database.jsx
+    const [editFKSelection, setEditFKSelection] = useState([]); // same shape as TQB.jsx
     const [editToggles, setEditToggles] = useState({});
     const [editSelectedRFKs, setEditSelectedRFKs] = useState({});
 

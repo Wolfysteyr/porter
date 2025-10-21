@@ -13,8 +13,8 @@ return new class extends Migration
     {
         Schema::create('external_databases', function (Blueprint $table) {
             $table->id();
-            $table->string('name'); // e.g. 'Client A', 'Tenant 1', etc.
-            $table->string('description')->nullable(); // used in app logic
+            $table->string('name'); // name of the external database connection
+            $table->string('description')->nullable(); // optional description
             $table->string('driver')->default('mysql');
             $table->string('host');
             $table->string('port')->default('3306');

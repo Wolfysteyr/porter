@@ -7,6 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 class ExternalDatabase extends Model
 {
     protected $fillable = [
-        'name', 'database', 'driver', 'host', 'port', 'username', 'password',
+        'name', 'database', 'driver', 'host', 'port', 'username', 'password', 'description',
     ];
 }

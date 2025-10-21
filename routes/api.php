@@ -25,6 +25,8 @@ use App\Http\Controllers\ExternalDbController;
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/databases/external', [ExternalDbController::class, 'listExternalDbs']);
     Route::post('/databases/external', [ExternalDbController::class, 'createExternalDb']);
+    // RESTful routes used by the React frontend (index/store/update/destroy)
+    Route::apiResource('databases/external', ExternalDbController::class)->only(['index','store','update','destroy']);
     Route::get('/databases/external/tables', [ExternalDbController::class, 'listTables']);
     Route::post('/databases/external/tables/{table}', [ExternalDbController::class, 'getTableData']);
     Route::get('/databases/external/tables/{table}/columns', [ExternalDbController::class, 'getTableColumns']);

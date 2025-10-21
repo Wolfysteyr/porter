@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import Modal from 'react-modal';
 
 
-export default function Database(){
+export default function TQB(){
 
     const { appAddress } = useContext(AppContext);
 
@@ -718,6 +718,7 @@ export default function Database(){
                 </div>
             </Modal>
 
+            {/* New Database modal */}
             <Modal 
             isOpen={toggleNewDBModal} 
             onRequestClose={() => setToggleNewDBModal(false)}
