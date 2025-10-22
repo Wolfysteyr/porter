@@ -15,6 +15,7 @@ export default function TQB(){
     const [loading, toggleLoading] = useState(false);
 
     //errors, wip
+    
     const [templateNameErr, setTemplateNameErr] = useState(false);
     const [templateNameErrMsg, setTemplateNameErrMsg] = useState("");
     const [message, setMessage] = useState("");
@@ -112,6 +113,7 @@ export default function TQB(){
     const [selectedCols, setSelectedCols] = useState([]);
     const [selectedWhere, setSelectedWhere] = useState([]);
     const [foreignKeysSelection, setForeignKeysSelection] = useState([]); // { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
+    const [templateName, setTemplateName] = useState("");
 
     // used for toggling visibility of various sections, also part of template
     const [toggles, setToggles] = useState({}); // { id: bool }
@@ -149,6 +151,9 @@ export default function TQB(){
             setTableCols([]);
             setTableData([]);
             setSelectedCols([]);
+            setSelectedWhere([]);
+            setForeignKeysSelection([]);
+            setUpdatedData(false);
             return;
         }
         setToggleNewDBModal(true);
@@ -161,6 +166,7 @@ export default function TQB(){
              getDatabases();
              setSelectedDatabase(""); // reset selected database on token change
          }
+         handleMenuToggle();
      }, [token, appAddress]);
 
     // manage FKSelection: { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
@@ -280,6 +286,7 @@ export default function TQB(){
             setSelectedRFKs([]);
             setSelectedWhere([]);
             toggleLoading(true);
+            handleFetchTableData();
             console.log("Fetching columns for table:", selectedTable, "...");
             const res = await fetch(
                 `${appAddress}/api/databases/external/tables/${encodeURIComponent(selectedTable)}/columns?name=${encodeURIComponent(selectedDatabase)}`,
@@ -294,6 +301,7 @@ export default function TQB(){
             console.error("Error fetching table columns:", error);
         } finally {
             toggleLoading(false);
+            setUpdatedData(false);
         }
         }
         fetchTableColumns();
@@ -304,11 +312,17 @@ export default function TQB(){
         }, []);
     
 
+    const [updatedData, setUpdatedData] = useState(false);
+    // checks if any of the query-building parameters changed, then alerts the user
+    useEffect(() => {
+        setUpdatedData(true);
+    }, [selectedCols, foreignKeysSelection, selectedWhere, rowLimit]);
 
      // Fetch data from selected table from selected columns
      async function handleFetchTableData() {
          if (!selectedTable) return;
          try {
+            toggleLoading(true);
              // build payload with only present values
             const payload = {};
             if (selectedDatabase) payload.name = selectedDatabase;
@@ -341,6 +355,9 @@ export default function TQB(){
             setTableData(rows);
         } catch (err) {
             console.error("Failed to fetch table data:", err);
+        } finally {
+            toggleLoading(false);
+            setUpdatedData(false);
         }
         }
 
@@ -412,9 +429,7 @@ export default function TQB(){
         });
     };
 
-    const handleSaveTemplate = () => {
-        const templateName = document.getElementById("templateName").value;
-        
+    const handleSaveTemplate = () => {        
         // Save the template (you'll need to implement this)
         console.log("Saving template:", templateName);
         setTemplateNameErr(false);
@@ -499,12 +514,51 @@ export default function TQB(){
         });
     }
 
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [menus, setMenus] = useState({});
+
+    // computed counts for columns and selected referenced FKs
+    const selectedColsCount = Array.isArray(selectedCols) ? selectedCols.length : 0;
+    // selectedRFKs is an object mapping parentCol -> [fkcol,...]
+    const selectedRFKsCount = selectedRFKs && typeof selectedRFKs === 'object'
+        ? Object.values(selectedRFKs).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0)
+        : 0;
+
+    function handleMenuToggle() {
+        setIsMenuOpen(!isMenuOpen);
+    }
+
+
+    // toggles side menu submenus, closing others when one is opened
+    function toggleMenus(menuName) {
+        setMenus(prevState => {
+            const newState = {};
+            // Set all menus to false first
+            Object.keys(prevState).forEach(key => {
+                newState[key] = false;
+            });
+            // Then toggle the specific menu
+            newState[menuName] = !prevState[menuName];
+            return newState;
+        });
+
+    }
+
     return (
        <>
-        <h1 className="title">Table Query Builder</h1>
-        
-            <div className={`main-div`}>
-                
+        <h1 className="title">Table Query Builder </h1>
+        {/*Side menu with all the options, opens automatically upon page load*/}
+        <div className={`side-menu` + (isMenuOpen ? ' open' : '')}>
+            {selectedDatabase && selectedTable && updatedData === true && (<>Rules have changed, please refresh <span className="attention">!</span></>)}
+            {selectedDatabase && selectedTable && <img src="/icons/refresh-page-option.png" alt="Refresh Preview Table" className="refresh-button" onClick={handleFetchTableData} />}
+            <img src="/icons/gear.png" alt="Menu Icon" className="menu-icon" onClick={handleMenuToggle}/>
+            <div className="side-menu-content">                
+                <p className="error">{templateNameErrMsg}</p>
+                <span style={{display: "flex", justifyContent: "left", alignItems: "left", marginBottom: "10px"}}>
+                <input placeholder="Template name" style={{ borderColor: templateNameErr ? 'red' : 'initial' , width: '50%', marginRight: '10px' }} onBlur={(e) => setTemplateName(e.target.value)} />
+                <button onClick={handleSaveTemplate} className="save-template-button" style={{height: 'fit-content'}} disabled={!templateName || !selectedDatabase || !selectedTable}> Save </button>
+                </span>
+                <hr />
                 <div style={{width: "50%", margin: "auto auto 20px auto" }}>
                     <label htmlFor="db">Select Database</label>
                     <select id="db" value={selectedDatabase} onChange={(e) => handleNewDatabase(e.target.value)}>
@@ -531,25 +585,32 @@ export default function TQB(){
                                         return { value: tableName, label: tableName };
                                     })} 
                                     value={selectedTable ? { value: selectedTable, label: selectedTable } : null}
-                                    onChange={(opt) => setSelectedTable(opt ? opt.value : '')}
+                                    onChange={(opt) => {setSelectedTable(opt ? opt.value : '');}}
                                     styles={{menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' }), width: "fit-content"   }}
                                 />
                             </div>
                         </>
                     )}
-                    
-                    
                 </div>
-
-                <div className="filterDIV">
-                    {tableCols.length > 0 && (
-                        <div className="filterDIVenabled">
-                            <button onClick={() => toggle("column-checklist")}> {isToggled("column-checklist") ? "▲" : "▼"} Select columns</button> <br />
-                            {isToggled("column-checklist") && (
-                                <div id="column-checklist" className="column-checklist">
-
-                                    {/* List of columns with checkboxes */}
-                                    {tableCols.map((col) => {
+                {/*Rules once database and table are selected*/}
+                <div className={`rules-section` + (selectedTable ? ' open' : '')}>
+                    <hr />
+                    <h3>Rules</h3>
+                    <div className={`rule-item` + (menus["column-menu"] ? ' open' : '')} onClick={() => toggleMenus("column-menu")} >
+                        <label>
+                            Columns (
+                            { (selectedColsCount === 0 && selectedRFKsCount === 0) 
+                                ? 'All' 
+                                : (selectedColsCount === 0 && selectedRFKsCount > 0)
+                                    ? `All + ${selectedRFKsCount} fks`
+                                    : `${selectedColsCount} cols${selectedRFKsCount ? `, ${selectedRFKsCount} fks` : ''}`
+                            }
+                        )</label>
+                        <strong>{menus["column-menu"] ? "<" : ">"}</strong>
+                    </div>
+                    <div className={`rule-submenu` + (menus["column-menu"] ? ' open' : '')}>
+                            {/* List of columns with checkboxes */}
+                                    {Array.isArray(tableCols) && tableCols.map((col) => {
                                         // Find the foreign key object for this column, if any
                                         const fk = Object.values(foreignKeys).find(fk => fk.column_name === col);
                                         return (
@@ -600,12 +661,13 @@ export default function TQB(){
                                             </div>
                                         );
                                     })}
+                    </div>
 
-                                </div>
-                            )}
-                            <div className="whereSection" id="whereSection">
-                                <h3>WHERE conditions</h3>
-
+                    <div className={`rule-item` + (menus["where-menu"] ? ' open' : '')} onClick={() => toggleMenus("where-menu")}>
+                        <label>Where Statements ({Array.isArray(selectedWhere) && selectedWhere.length > 0 ? selectedWhere.length : "none"})</label> <strong>{menus["where-menu"] ? "<" : ">"}</strong>
+                    </div>
+                    <div className={`rule-submenu` + (menus["where-menu"] ? ' open' : '')}>
+                        <div className="whereSection" id="whereSection">                        
                                 {(() => {
                                     // include referenced FK columns as "referencedTable.column"
                                     const fkList = Array.isArray(foreignKeys) ? foreignKeys : Object.values(foreignKeys || {});
@@ -669,15 +731,17 @@ export default function TQB(){
                                      );
                                  })()}
                              </div>
-                            <br /><br />
-                            <input type="number" id="limit" placeholder="Input row amount" onChange={(e) => {setRowLimit(e.target.value)}} style={{fontSize:"20px"}}/> <br />
-                                <br /> 
-                                <button onClick={handleFetchTableData}>Load Data</button>
-                            </div>
-                    
-                    )}
+                    </div>
+                    <div className={`rule-item` + (menus["export-menu"] ? ' open' : '')} onClick={() => toggleMenus("export-menu")} >
+                        <label>Export [WIP]</label> <strong>{menus["export-menu"] ? "<" : ">"}</strong>
+                    </div>
                 </div>
-                {selectedTable && tableData.length > 0 && (
+            </div>
+        </div>
+
+            <div className={`main-div`}>
+                
+                {selectedTable && tableData.length > 0 ? (
                     <div className={`tableContainer ${showSuccessGlow ? "successGlow" : ""}`}>
                         <br />
                         <table id="myTable" border="1" cellPadding="5">
@@ -699,16 +763,11 @@ export default function TQB(){
                             </tbody>
                         </table>
                     </div>
+                ) : (
+                    <p className="no-data-message">No database or table selected.</p>
                 )}
 
-                {tableData.length != 0 && (
-                    <div style={{ marginTop: '20px', fontStyle: 'italic' }}>
-                        <label htmlFor="templateName"> Template Name: </label>
-                        <p className="error">{templateNameErrMsg}</p>
-                        <input type="text" name="templateName" id="templateName" style={{ borderColor: templateNameErr ? 'red' : 'initial' , width: '30%', marginBottom: '10px' }} />
-                        <button onClick={handleSaveTemplate} > Save Template </button>
-                    </div>
-                )}
+                
             </div>
 
             {/* Message modal */}
