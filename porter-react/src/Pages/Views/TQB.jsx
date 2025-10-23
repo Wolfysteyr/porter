@@ -3,6 +3,7 @@ import Select from 'react-select';
 import { AppContext } from "../../Context/AppContext"
 import { useNavigate } from "react-router-dom";
 import Modal from 'react-modal';
+import Tippy from '@tippyjs/react';
 
 
 export default function TQB(){
@@ -109,7 +110,7 @@ export default function TQB(){
     // also used for template saving
     const [selectedDatabase, setSelectedDatabase] = useState(""); // hardcoded for now, later can add internal db support
     const [selectedTable, setSelectedTable] = useState("");
-    const [rowLimit, setRowLimit] = useState(0);
+    const [rowLimit, setRowLimit] = useState("");
     const [selectedCols, setSelectedCols] = useState([]);
     const [selectedWhere, setSelectedWhere] = useState([]);
     const [foreignKeysSelection, setForeignKeysSelection] = useState([]); // { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
@@ -316,7 +317,7 @@ export default function TQB(){
     // checks if any of the query-building parameters changed, then alerts the user
     useEffect(() => {
         setUpdatedData(true);
-    }, [selectedCols, foreignKeysSelection, selectedWhere, rowLimit]);
+    }, [selectedCols, foreignKeysSelection, selectedWhere, rowLimit, rowLimit]);
 
      // Fetch data from selected table from selected columns
      async function handleFetchTableData() {
@@ -478,9 +479,10 @@ export default function TQB(){
         const payload = {
             name: templateName,
             query: query,
-            database: selectedDatabase, // hardcoded for now, later can add internal db support
+            database: selectedDatabase, 
             table: selectedTable,
             user_id: user.id,
+            // TODO: add rules from export here later
             UI: UI
         };
         console.log("Payload for saving template:", payload);
@@ -541,17 +543,27 @@ export default function TQB(){
             newState[menuName] = !prevState[menuName];
             return newState;
         });
-
     }
+
+    function resetRules(){
+            setSelectedCols([]);
+            setSelectedWhere([]);
+            setForeignKeysSelection([]);
+            setSelectedRFKs([]);
+            setRowLimit("");
+            setUpdatedData(false);
+        }
 
     return (
        <>
         <h1 className="title">Table Query Builder </h1>
         {/*Side menu with all the options, opens automatically upon page load*/}
         <div className={`side-menu` + (isMenuOpen ? ' open' : '')}>
-            {selectedDatabase && selectedTable && updatedData === true && (<>Rules have changed, please refresh <span className="attention">!</span></>)}
-            {selectedDatabase && selectedTable && <img src="/icons/refresh-page-option.png" alt="Refresh Preview Table" className="refresh-button" onClick={handleFetchTableData} />}
-            <img src="/icons/gear.png" alt="Menu Icon" className="menu-icon" onClick={handleMenuToggle}/>
+            <div className="side-menu-header">
+                <span style={{opacity: (selectedTable && selectedDatabase && updatedData === true) ? 1 : 0}} className="attention">!</span>
+                <img src="/icons/refresh-page-option.png" alt="Refresh Preview Table" className="refresh-button" onClick={handleFetchTableData} style={{opacity: (selectedDatabase && selectedTable ? 1 : 0)}} />
+                <img src="/icons/gear.png" alt="Menu Icon" className="menu-icon" onClick={handleMenuToggle}/>
+            </div>
             <div className="side-menu-content">                
                 <p className="error">{templateNameErrMsg}</p>
                 <span style={{display: "flex", justifyContent: "left", alignItems: "left", marginBottom: "10px"}}>
@@ -595,7 +607,10 @@ export default function TQB(){
                 {/*Rules once database and table are selected*/}
                 <div className={`rules-section` + (selectedTable ? ' open' : '')}>
                     <hr />
-                    <h3>Rules</h3>
+                    <div className="rules-header">
+                        <h3>Rules</h3> <Tippy content="Reset all rules"><img src = "icons/undo.png" alt="Reset Icon" className="reset-icon" onClick={() => {resetRules();}} /></Tippy>
+                        <input type="number" placeholder="Preview row limit" style={{width: "50%"}} value={rowLimit} onChange={(e) => setRowLimit(e.target.value)} />
+                    </div>
                     <div className={`rule-item` + (menus["column-menu"] ? ' open' : '')} onClick={() => toggleMenus("column-menu")} >
                         <label>
                             Columns (

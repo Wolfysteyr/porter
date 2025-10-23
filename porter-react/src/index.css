@@ -17,7 +17,7 @@
 
 .side-menu{
   width: 300px;
-  height: 50%;
+  max-height: 70%;
   background-color: #1e293b;
   position: fixed;
   left: -290px; /* Hidden by default */
@@ -49,19 +49,38 @@
 }
 
 
-.side-menu .menu-icon{
+.side-menu-header{
   position: absolute;
   top: 5px;
-  right: 5px;
+  left: 230px;
+  color: #ff0000;
+  font-weight: 600;
   z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.side-menu .refresh-button {
-  position: absolute;
-  top: 5px;
-  right: 50px;
-  z-index: 1100;
+
+.side-menu-header .menu-icon,
+.side-menu-header .refresh-button,
+.rules-header .reset-icon, .rules-header h3 {
+  position: static; /* allow flex layout */
+  width: 28px;
+  height: 28px;
+  margin-left: 0.5rem;
+  z-index: auto;
 }
+
+
+.rules-header {
+  position: relative;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 
 .rules-section{
   margin-right: 300px;
@@ -104,6 +123,7 @@
 }
 
 .rule-submenu{
+  transform: translateX(-200px);
   opacity: 0;
   position: absolute;
   margin-top: -54px;
@@ -114,6 +134,8 @@
   padding-top: 3rem;
   border: 3px solid #cbd5e1;
   border-radius: 0 8px 8px 0;
+  overflow-y: auto;
+  max-height: 200px; /* Limit height for scrolling */
 }
 .rule-submenu.open{
   opacity: 1;
@@ -121,7 +143,7 @@
 }
 
 
-.menu-icon, .refresh-button{
+.menu-icon, .refresh-button, .reset-icon {
   width: 32px;
   height: 32px;
   position: fixed;
@@ -147,21 +169,19 @@
     display: inline-block;
     box-sizing: border-box;
     animation: rotation 1s linear infinite;
-    }
+}
 
-    @keyframes rotation {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
-    } 
+@keyframes rotation {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+} 
 
-
-
-  .hidden {
-    display: none;
+.hidden {
+  display: none;
   }
 
 a {
@@ -481,8 +501,6 @@ input[type="submit"]:hover, select:hover{
 }
 
 
-
-
 .main-div {
   width: auto;
   max-width: 90%;       /* keeps content from stretching too wide */
@@ -506,7 +524,7 @@ footer{
   height: 3rem;
   position: fixed;
   width: 100%;
-bottom: 0;
+  bottom: 0;
 }
 
 footer p{
@@ -929,7 +947,7 @@ h6{
   width: fit-content;
   max-width: 70%;
   height: fit-content;
-  max-height: 80%;
+  max-height: 80%;  
   padding: 1rem 1rem 1rem 1rem;
   transform: translate(-50%, -50%);
   align-items: center;
