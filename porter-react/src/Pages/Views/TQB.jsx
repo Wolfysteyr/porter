@@ -1,9 +1,14 @@
-import { useContext, useState, useEffect } from "react"
+import { useContext, useState, useEffect, useCallback } from "react"
 import Select from 'react-select';
 import { AppContext } from "../../Context/AppContext"
 import { useNavigate } from "react-router-dom";
 import Modal from 'react-modal';
 import Tippy from '@tippyjs/react';
+import Switch from 'react-switch';
+import FRRuleField from "../../Components/FRRuleField";
+import ColumnNameChange from "../../Components/ColumnNameChange";
+import LimitOffsetRuleField from "../../Components/LimitOffsetRuleField.jsx";
+
 
 
 export default function TQB(){
@@ -16,12 +21,12 @@ export default function TQB(){
     const [loading, toggleLoading] = useState(false);
 
     //errors, wip
-    
     const [templateNameErr, setTemplateNameErr] = useState(false);
     const [templateNameErrMsg, setTemplateNameErrMsg] = useState("");
     const [message, setMessage] = useState("");
     const [messageSuccess, setMessageSuccess] = useState(false);
     const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
+    const [showWarning, setShowWarning] = useState(false);
 
     const {token, user} = useContext(AppContext);
 
@@ -115,6 +120,16 @@ export default function TQB(){
     const [selectedWhere, setSelectedWhere] = useState([]);
     const [foreignKeysSelection, setForeignKeysSelection] = useState([]); // { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
     const [templateName, setTemplateName] = useState("");
+    const [exportType, setExportType] = useState(false); // false = CSV, true = SQL
+
+    const toggleExportType = () => {
+        setExportType(prev => !prev);
+        setColumnNameChanges([]);
+        if (exportType) {
+            setColumnNameChanges(prev => [...prev, { original: '', new: '' }]);
+        }
+
+    };
 
     // used for toggling visibility of various sections, also part of template
     const [toggles, setToggles] = useState({}); // { id: bool }
@@ -127,6 +142,157 @@ export default function TQB(){
     const [tableData, setTableData] = useState([]);
     const [tableCols, setTableCols] = useState([]);
     const [foreignKeys, setForeignKeys] = useState([]); //foreign key details of selected table
+
+
+
+
+    // export things
+
+    const [targetDatabase, setTargetDatabase] = useState("");
+    const [targetTable, setTargetTable] = useState("");
+    const [dbTables, setDbTables] = useState([]);
+
+    useEffect(() => {
+        // fetch tables when targetDatabase changes
+        const fetchTables = async () => {
+            if (targetDatabase) {
+                try {
+                    toggleLoading(true);
+                    const response = await fetch(`${appAddress}/api/databases/external/tables?name=${encodeURIComponent(targetDatabase)}`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                        method: 'GET'
+                        });
+                        if (!response.ok) throw new Error(`Status ${response.status}`);
+                        const data = await response.json();
+                    setDbTables(Array.isArray(data.tables) ? data.tables : []);
+                    console.log("Fetched tables for database", targetDatabase, data.tables);
+                } catch (err) {
+                    console.error("Failed to fetch databases:", err);
+                    setDbTables([]);
+                } finally {
+                    toggleLoading(false);
+                }
+                }
+        };
+        fetchTables();
+    }, [targetDatabase]);
+
+
+    const [findOptions, setFindOptions] = useState({});
+
+    const [FRRules, setFRRules] = useState([]); // { find: string, replace: string }, holds find/replace rules
+    const [limitOffsetRules, setLimitOffsetRules] = useState([]); // { limit: number, offset: number }, holds limit/offset rule
+    const [columnNameChanges, setColumnNameChanges] = useState([]); // { original: string, new: string }, holds list of column name changes
+    
+    const [showColumnWindow, setShowColumnWindow] = useState(false);
+
+
+    
+
+
+        // Add a new empty fr rule
+    const addFRRule = () => {
+        setFRRules((prev) => [...prev, { find: "", replace: "" }]);
+    };
+
+    // Add limit/offset rule
+    const addLimitOffset = () => {
+        setLimitOffsetRules((prev) => [...prev, { limit: 1000, offset: 0 }]);
+    }
+
+    const handleFRRuleChange = (index, field, value) => {
+        setFRRules((prev) =>
+        prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
+        );
+        console.log('Updated FR rules:', FRRules);
+    }
+
+    const handleLimitOffsetChange = (index, field, value) => {
+        setLimitOffsetRules((prev) =>
+            prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
+        );
+    }
+
+    // make handler stable to avoid re-creating function every render
+    const handleColumnNameChange = useCallback((index, field, value) => {
+        setColumnNameChanges((prev) =>
+            prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
+        );
+    }, []);
+
+
+    // Remove find replace rule
+    const removeFRRule = (index) => {
+        setFRRules((prev) => prev.filter((_, i) => i !== index));
+    }
+
+    const removeLimitOffsetRule = (index) => {
+        setLimitOffsetRules((prev) => prev.filter((_, i) => i !== index));
+    }
+
+    // Remove column name change entry
+    const removeColumnChange = (index) => {
+        setColumnNameChanges((prev) => prev.filter((_, i) => i !== index));
+    }
+
+
+    async function populateFindOptions() {
+        try {
+            if(Object.keys(findOptions).length > 0) return findOptions; // already populated
+            toggleLoading(true);
+            const payload = {
+                name: selectedDatabase,
+                columns: selectedCols.length > 0 ? selectedCols : ['*'],
+                where: selectedWhere.length > 0 ? selectedWhere : [],
+                foreign_keys: foreignKeysSelection.length > 0 ? foreignKeysSelection : [],
+                limit: 10000, // limit to 10000 rows for performance
+            };
+
+            console.log('populateFindOptions payload', payload);
+
+            const response = await fetch(`${appAddress}/api/databases/external/tables/${encodeURIComponent(selectedTable)}`, {
+                method: 'POST', // POST with payload
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: "application/json",
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const text = await response.text().catch(() => null);
+                console.error('Failed to fetch find options', response.status, text);
+                return {};
+            }
+            const data = await response.json(); // expect an array of row objects
+
+            // Group values by column
+            const grouped = {};
+            data.rows.forEach (row => {
+                 Object.entries(row).forEach(([key, val]) => {
+                    if (!grouped[key]) {
+                        grouped[key] = new Set();
+                    }
+                    grouped[key].add(val);
+                });
+            });
+
+            // Convert sets to arrays
+            Object.keys(grouped).forEach(key => {
+                grouped[key] = Array.from(grouped[key]);   
+            });
+        
+            console.log('populateFindOptions grouped', grouped);
+            setFindOptions(grouped);
+            return grouped;
+        } catch (err) {
+            console.error('populateFindOptions error', err);
+            return {};
+        } finally { 
+            toggleLoading(false);
+        }
+    }
 
 
 
@@ -747,8 +913,143 @@ export default function TQB(){
                                  })()}
                              </div>
                     </div>
-                    <div className={`rule-item` + (menus["export-menu"] ? ' open' : '')} onClick={() => toggleMenus("export-menu")} >
+                    <div className={`rule-item` + (menus["export-menu"] ? ' open' : '')} onClick={() => {toggleMenus("export-menu"); (async () => {
+                const grouped = await populateFindOptions();
+                setFindOptions(grouped || {});
+            })();}}>
                         <label>Export [WIP]</label> <strong>{menus["export-menu"] ? "<" : ">"}</strong>
+                    </div>
+                    <div className={`rule-submenu-export` + (menus["export-menu"] ? ' open' : '')}> {/* Special case for export menu as it needs more space */}
+                        <h3>Export Rules</h3>
+                                <Tippy
+                                    className='switch-warning'
+                                    visible={showWarning}
+                                    interactive={true}
+                                    placement="bottom"
+                                    delay={[100, 50]}
+                                    content={exportType ? (
+                                        <div>
+                                            Use this only when you know the target database structure.
+                                            <br />
+                                            <button onClick={() => setShowWarning(false)}>OK</button>
+                                            <button onClick={() => {setShowWarning(false); toggleExportType();}}>Cancel</button>
+                                        </div>
+                                    ) : ''}>
+                                <div>
+                                    <span className={!exportType ? 'active' : ''}> CSV </span>
+                                    <Switch
+                                        onChange={() => {
+                                            toggleExportType();
+                                            // show warning only when switching to DB mode
+                                            setShowWarning(!exportType);
+                                        }}
+                                        checked={exportType}
+                                        uncheckedIcon={false}
+                                        checkedIcon={false}
+                                        onColor="#888888"
+                                        onHandleColor="#ffffff"
+                                        handleDiameter={20}
+                                        height={10}
+                                        width={40}
+                                    />
+                                    <span className={exportType ? 'active' : ''}> DB </span>
+                                </div>
+
+
+                                {/* TODO FIX: when closing Change Column Names window, target db and table get reset, when they shouldn't */}
+                                </Tippy>
+                                {/* DB/Table selectors only in DB export mode */}
+                                        {exportType && (
+                                            <div style={{ marginTop: '0.5rem' }}>
+                                                <label>Target Database</label>  {!targetDatabase && <span className='attention'>!</span>}
+                                                <Select
+                                                    options={(databases || [])
+                                                        .filter(d => d.name !== selectedDatabase) // filters out the template database
+                                                        .map(d => ({ value: d.name ?? d, label: d.name ?? d }))}
+                                                    value={targetDatabase ? { value: targetDatabase, label: targetDatabase } : null}
+                                                    onChange={(opt) => { const val = opt ? opt.value : ''; setTargetDatabase(val); setTargetTable(''); ([]); }}
+                                                    styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                                                />
+                                                {targetDatabase && (
+                                                    <>
+                                                        <label>Target Table</label>  {!targetTable && <span className='attention'>!</span>}
+                                                        <Select
+                                                            options={(dbTables || []).map(t => ({ value: t, label: t }))}
+                                                            value={targetTable ? { value: targetTable, label: targetTable } : null}
+                                                            onChange={(opt) => {setTargetTable(opt ? opt.value : ''); }}
+                                                            styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
+                                                        />
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+                                <button className="add-rule-button" onClick={addFRRule}>Add New F&R Rule</button> <span/>
+                                <button className='add-rule-button' onClick={addLimitOffset} disabled={limitOffsetRules.length >= 1}>Add Limit/Offset</button> <span/>
+                                <button className='add-rule-button' onClick={() => { setShowColumnWindow(true); setColumnNameChanges(prev => [...prev, { original: '', new: '' }]) }} disabled={showColumnWindow}>Change Column Names</button> {!showColumnWindow && exportType && <span className='attention'>!</span>}
+
+                                {FRRules.map((rule, index) => (
+                                    <FRRuleField key={index} rule={rule} index={index} FRRules={FRRules} findOptions={findOptions} findOptionsLoading={loading} removeFRRule={removeFRRule} handleFRRuleChange={handleFRRuleChange} />
+                                ))}
+                                {limitOffsetRules.map((rule, index) => (
+                                    <LimitOffsetRuleField key={index} rule={rule} index={index} removeLimitOffsetRule={removeLimitOffsetRule} handleLimitOffsetChange={handleLimitOffsetChange} />
+                                ))}
+                                {/* Change Column Names window - only visible when opened */}
+                                {showColumnWindow && (
+                                    <div className="column-name-change-container">
+                                        <Tippy content={ exportType ? 
+                                            <span>It is recommended to use this as sometimes column names may not align perfectly with the target schema, causing data loss.</span>
+                                            : 
+                                            <span>This will rename columns in the exported CSV file.</span>}>
+                                            <span>ℹ️</span>
+                                        </Tippy>
+                                        <strong style={{ marginLeft: 6 }}>Change Column Names</strong>
+                                        <button onClick={() => {
+                                                // Close window and clear all column changes
+                                                setShowColumnWindow(false);
+                                                setColumnNameChanges([]);
+                                                setTargetDatabase('');
+                                                setTargetTable('');
+                                                setDbTables([]);
+                                            }} className='remove-rule-button'>✖</button>
+
+                                        
+
+                                        
+
+                                        <div style={{ marginTop: '0.75rem' }}>
+                                            {columnNameChanges.length === 0 && <div style={{ color: '#999' }}>No columns added yet.</div>}
+
+                                            {columnNameChanges.map((nameChange, index) => (
+                                                // show mapping rows only if CSV mode OR (DB mode + both DB & table selected)
+                                                ((!exportType) || (exportType && targetDatabase && targetTable)) && (
+                                                    <>
+                                                        <ColumnNameChange
+                                                            nameChange={nameChange}
+                                                            index={index}
+                                                            findOptions={findOptions}
+                                                            toggleLoading={toggleLoading}
+                                                            handleColumnNameChange={handleColumnNameChange}
+                                                            columnNameChanges={columnNameChanges}
+                                                            removeColumnChange={removeColumnChange}
+                                                            exportType={exportType}
+                                                            targetDatabase={targetDatabase}
+                                                            targetTable={targetTable}
+                                                        />
+                                                        <br />
+
+                                                        </>
+                                                        
+                                                )
+                                            ))}
+                                           {targetDatabase && targetTable || !exportType ? (
+                                               <button onClick={() => setColumnNameChanges(prev => [...prev, { original: '', new: '' }])}>Add Column</button>
+                                           ) : (
+                                               <div style={{ color: '#999' }}>Select a database and table to add columns.</div>
+                                           )}
+
+                                        </div>
+                                    </div>
+                                )}
                     </div>
                 </div>
             </div>

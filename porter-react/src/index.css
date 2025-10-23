@@ -122,7 +122,7 @@
   width: calc(100% + 20px);
 }
 
-.rule-submenu{
+.rule-submenu, .rule-submenu-export{
   transform: translateX(-200px);
   opacity: 0;
   position: absolute;
@@ -135,12 +135,120 @@
   border: 3px solid #cbd5e1;
   border-radius: 0 8px 8px 0;
   overflow-y: auto;
-  max-height: 200px; /* Limit height for scrolling */
+  max-height: 0px; /* Limit height for scrolling */
+  width: fit-content;
+  animation: rule-submenu-close 1 ease forwards;
+
 }
+
+.rule-submenu {
+}
+
 .rule-submenu.open{
-  opacity: 1;
-  transform: translateX(310px);
+  animation: rule-submenu-open 1s ease forwards;
 }
+
+.rule-submenu-export{
+  border-radius: 8px;
+  padding-top: 0rem;
+  transform: translateX(-1000px);
+  animation: export-collapse 1s ease forwards;
+}
+
+.rule-submenu-export.open{
+  animation: export-expand 1s ease forwards;
+}
+
+ @keyframes export-expand {
+  0%{
+    opacity: 0;
+    transform: translateX(0);
+    max-height: 0px;
+    margin-top: -54px
+  }
+  50%{
+    opacity: 1;
+    transform: translateX(330px);
+    max-height: 0px;
+    margin-top: -54px;
+    width: 300px;
+  }
+  100%{
+    width: 600px;
+    max-height: 500px;
+    margin-top: -500px;
+    transform: translateX(330px);
+    opacity: 1;
+  }
+}
+
+@keyframes export-collapse {
+  0%{
+    width: 600px;
+    max-height: 500px;
+    margin-top: -500px;
+    transform: translateX(330px);
+    opacity: 1;
+  }
+  50%{
+    opacity: 1;
+    margin-top: -54px;
+    max-height: 0px;
+    width: 300px;
+    transform: translateX(330px);
+  }
+  99%{
+    opacity: 0;
+    transform: translateX(0px);
+  }
+  100%{
+    opacity: 0;
+    transform: translateX(-1000px);
+  }
+}
+
+@keyframes rule-submenu-open {
+  0%{
+    max-height: 0px;
+    transform: translateX(0px);
+    opacity: 0;
+    padding-top: 0px;
+  }
+  50%{
+    opacity: 1;
+    max-height: 0px;
+    padding-top: 0px;
+    transform: translateX(310px);
+  }
+  100%{
+    max-height: 300px;
+    transform: translateX(310px);
+    opacity: 1;
+  }
+}
+
+@keyframes rule-submenu-close {
+  0%{
+    max-height: 500px;
+    transform: translateX(310px);
+    opacity: 1;
+  }
+  50%{
+    opacity: 1;
+    max-height: 0px;
+    padding-top: 0px;
+    transform: translateX(310px);
+  }
+  100%{
+    max-height: 0px;
+    transform: translateX(0px);
+    opacity: 0;
+    padding-top: 0px;
+  }
+}
+
+
+
 
 
 .menu-icon, .refresh-button, .reset-icon {
