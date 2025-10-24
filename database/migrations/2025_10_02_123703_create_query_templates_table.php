@@ -14,9 +14,10 @@ return new class extends Migration
         Schema::create('query_templates', function (Blueprint $table) {
             $table->id();
             $table->text('name');
-            $table->json('query');
             $table->text('database');
             $table->text('table');
+            $table->json('query');
+            $table->text('export');
             $table->unsignedBigInteger('user_id')->nullable();
             $table->json('UI');
             $table->timestamps();

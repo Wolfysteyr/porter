@@ -5,10 +5,18 @@ import { useState , useEffect} from 'react';
 import Modal from 'react-modal';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Select from 'react-select';
+import Tippy from '@tippyjs/react';
+import Switch from 'react-switch';
+
+import FRRuleField from '../../Components/FRRuleField';
+import LimitOffsetRuleField from '../../Components/LimitOffsetRuleField';
+import ColumnNameChange from '../../Components/ColumnNameChange';
 
 Modal.setAppElement('#root');
 
 export default function Templates() {
+
+    const [loading, toggleLoading] = useState(false);
 
     const { appAddress } = useContext(AppContext);
 
@@ -36,6 +44,7 @@ export default function Templates() {
     const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
     const [message, setMessage] = useState('');
     const [messageSuccess, setMessageSuccess] = useState(true); // true for success, false for error
+    const [loadingMessage, setLoadingMessage] = useState('');
 
     // --- Edit modal states ---
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -58,8 +67,57 @@ export default function Templates() {
       'LIKE', 'NOT LIKE', 'IN', 'NOT IN',
       'IS NULL', 'IS NOT NULL'
     ];
+    // Export-related state (match TQB features so edit modal can edit export rules)
+    const [findOptions, setFindOptions] = useState({});
+    const [FRRules, setFRRules] = useState([]); // find/replace rules
+    const [limitOffsetRules, setLimitOffsetRules] = useState([]);
+    const [columnNameChanges, setColumnNameChanges] = useState([]);
+    const [showColumnWindow, setShowColumnWindow] = useState(false);
+    const [exportType, setExportType] = useState(false); // false = CSV, true = DB
+    const [targetDatabase, setTargetDatabase] = useState("");
+    const [targetTable, setTargetTable] = useState("");
+    const [dbTables, setDbTables] = useState([]);
+    const [showWarning, setShowWarning] = useState(false);
     const toggleEdit = (id) => setEditToggles(prev => ({...prev, [id]: !prev[id]}));
     const isEditToggled = (id) => !!editToggles[id];
+
+    // helper functions for export rules
+    const addFRRule = () => setFRRules(prev => [...prev, { find: "", replace: "" }]);
+    const removeFRRule = (idx) => setFRRules(prev => prev.filter((_, i) => i !== idx));
+    const handleFRRuleChange = (index, field, value) => {
+        setFRRules(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+    };
+
+    const addLimitOffset = () => setLimitOffsetRules(prev => [...prev, { limit: 1000, offset: 0 }]);
+    const removeLimitOffsetRule = (idx) => setLimitOffsetRules(prev => prev.filter((_, i) => i !== idx));
+    const handleLimitOffsetChange = (index, field, value) => {
+        setLimitOffsetRules(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+    };
+
+    const handleColumnNameChange = (index, field, value) => {
+        setColumnNameChanges(prev => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+    };
+
+    // fetch tables for a selected target database
+    useEffect(() => {
+        if (!targetDatabase || !token) { setDbTables([]); return; }
+        let cancelled = false;
+        async function fetchDbTables(){
+            try {
+                const r = await fetch(`${appAddress}/api/databases/external/tables?name=${encodeURIComponent(targetDatabase)}`, {
+                    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }
+                });
+                const d = await r.json();
+                if (cancelled) return;
+                setDbTables(d.tables || []);
+            } catch(e) {
+                console.error('fetch target db tables failed', e);
+                setDbTables([]);
+            }
+        }
+        fetchDbTables();
+        return () => { cancelled = true; }
+    }, [targetDatabase, token, appAddress]);
 
     useEffect(() => {
         fetchTemplates();
@@ -123,7 +181,16 @@ export default function Templates() {
         setEditToggles((template.UI && template.UI.toggles) ? template.UI.toggles : {});
         setEditSelectedRFKs((template.UI && template.UI.selectedRFKs) ? template.UI.selectedRFKs : {});
 
-            // table and columns: set selected table and fetch its columns
+        // populate export-related fields if present on the template
+        const ex = template.export ?? {};
+        setExportType(Boolean(ex.exportType));
+        setTargetDatabase(ex.targetDatabase ?? "");
+        setTargetTable(ex.targetTable ?? "");
+        setFRRules(Array.isArray(ex.findReplaceRules) ? ex.findReplaceRules : []);
+        setLimitOffsetRules(Array.isArray(ex.limitOffsetRules) ? ex.limitOffsetRules : []);
+        setColumnNameChanges(Array.isArray(ex.columnNameChanges) ? ex.columnNameChanges : []);
+
+        // table and columns: set selected table and fetch its columns
         const t = template.table ?? '';
         setEditSelectedTable(t);
         setEditSelectedDatabase(template.database ?? '');
@@ -274,6 +341,15 @@ export default function Templates() {
         if (Object.keys(query).length === 0) query.columns = ["*"];
 
         const UI = { toggles: editToggles, selectedRFKs: editSelectedRFKs };
+        const eggsport = {
+            exportType: exportType,
+            targetDatabase: targetDatabase,
+            targetTable: targetTable,
+            findReplaceRules: FRRules,
+            limitOffsetRules: limitOffsetRules,
+            columnNameChanges: columnNameChanges
+        };
+
         const payload = {
             name: editName,
             query: query,
@@ -281,7 +357,8 @@ export default function Templates() {
             database: editSelectedDatabase,
             table: editSelectedTable,//#endregion
             user_id: user.id,
-            UI: UI
+            UI: UI,
+            export: eggsport
         };
         try {
             const res = await fetch(`${appAddress}/api/query-templates/${editTemplateId}`, {
@@ -355,9 +432,61 @@ export default function Templates() {
         openEditModal(t);
     }
 
-    function handleUseTemplate(template) {
-        navigate('/export', { state: { template } });
+
+    
+
+    
+
+    async function handleUseTemplate(template) {
+        // navigate('/export', { state: { template } });
         console.log("Using template:", template);
+        try {
+            toggleLoading(true);
+            
+            console.log('payload for export', template);
+            setTimeout(() => {
+                    if (loading) {
+                        setLoadingMessage("That's a lot of data! This may take a while...")
+                    }
+                }, 3000);
+            const response = await fetch(`${appAddress}/api/export`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: "application/json",
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(template)
+            });
+
+            if (!response.ok) {
+                console.error('Export failed with status:', response.status);
+                throw new Error('Failed to export data');
+            }
+            if (!template.export.exportType) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${template.name}_export.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                navigate('/templates', { state: { message: `Export successful! Exported to ${template.name + '_export.csv'}` } });
+                
+            } else {
+                navigate('/templates', { state: { message: `Export successful! Exported to  ${template.export.targetDatabase}, table ${template.export.targetTable}` } });
+            }
+        } catch (error) {
+            console.error('Error exporting data:', error);
+            alert('Error exporting data. Please try again later.');
+        } finally {
+            toggleLoading(false);
+            
+
+        }
+
     }
 
     // Templates visible to current user (admins see all)
@@ -560,6 +689,116 @@ export default function Templates() {
                                         );
                                     })()}
                                 </div>
+                                
+                                <hr />
+                                <h3>Export Rules</h3>
+                                <Tippy
+                                    className='switch-warning'
+                                    visible={showWarning}
+                                    interactive={true}
+                                    placement="bottom"
+                                    delay={[100, 50]}
+                                    content={exportType ? (
+                                        <div>
+                                            Use this only when you know the target database structure.
+                                            <br />
+                                            <button onClick={() => setShowWarning(false)}>OK</button>
+                                            <button onClick={() => { setShowWarning(false); setExportType(false); }}>Cancel</button>
+                                        </div>
+                                    ) : ''}>
+                                <div>
+                                    <span className={!exportType ? 'active' : ''}> CSV </span>
+                                    <Switch
+                                        onChange={() => { setExportType(prev => !prev); setColumnNameChanges([]); }}
+                                        checked={exportType}
+                                        uncheckedIcon={false}
+                                        checkedIcon={false}
+                                        onColor="#888888"
+                                        onHandleColor="#ffffff"
+                                        handleDiameter={20}
+                                        height={10}
+                                        width={40}
+                                    />
+                                    <span className={exportType ? 'active' : ''}> DB </span>
+                                </div>
+                                </Tippy>
+
+                                {exportType && (
+                                    <div style={{ marginTop: '0.5rem' }}>
+                                        <label>Target Database</label>
+                                        <select value={targetDatabase ?? ""} onChange={(e) => setTargetDatabase(e.target.value)}>
+                                            <option value="">-- Choose Database --</option>
+                                            {Array.from(new Set(templates.map(t => t.database).filter(Boolean))).map(db => (
+                                                <option key={db} value={db}>{db}</option>
+                                            ))}
+                                        </select>
+                                        {targetDatabase && (
+                                            <>
+                                                <label>Target Table</label>
+                                                <select value={targetTable ?? ""} onChange={(e) => setTargetTable(e.target.value)}>
+                                                    <option value="">-- Choose Table --</option>
+                                                    {(dbTables || []).map((t) => <option key={t} value={t}>{t}</option>)}
+                                                </select>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
+                                <div style={{ marginTop: '0.5rem' }}>
+                                    <button className="add-rule-button" onClick={addFRRule}>Add New F&R Rule</button> <span/>
+                                    <button className='add-rule-button' onClick={addLimitOffset} disabled={limitOffsetRules.length >= 1}>Add Limit/Offset</button> <span/>
+                                    <button className='add-rule-button' onClick={() => setShowColumnWindow(prev => !prev)} disabled={showColumnWindow}>Change Column Names</button> { !showColumnWindow && exportType && <span className='attention'>!</span> }
+                                </div>
+
+                                {FRRules.map((rule, index) => (
+                                    <FRRuleField key={index} rule={rule} index={index} FRRules={FRRules} findOptions={findOptions} findOptionsLoading={loading} removeFRRule={removeFRRule} handleFRRuleChange={handleFRRuleChange} />
+                                ))}
+                                {limitOffsetRules.map((rule, index) => (
+                                    <LimitOffsetRuleField key={index} rule={rule} index={index} removeLimitOffsetRule={removeLimitOffsetRule} handleLimitOffsetChange={handleLimitOffsetChange} />
+                                ))}
+
+                                {showColumnWindow && (
+                                    <div className="column-name-change-container">
+                                        <Tippy content={ exportType ? 
+                                            <span>It is recommended to use this as sometimes column names may not align perfectly with the target schema, causing data loss.</span>
+                                            : 
+                                            <span>This will rename columns in the exported CSV file.</span>}>
+                                            <span>ℹ️</span>
+                                        </Tippy>
+                                        <strong style={{ marginLeft: 6 }}>Change Column Names</strong>
+                                        <button onClick={() => setShowColumnWindow(false)} className='remove-rule-button'>✖</button>
+                                        <div style={{ marginTop: '0.75rem' }}>
+                                            {columnNameChanges.length === 0 && <div style={{ color: '#999' }}>No columns added yet.</div>}
+
+                                            {columnNameChanges.map((nameChange, index) => (
+                                                ((!exportType) || (exportType && targetDatabase && targetTable)) && (
+                                                    <>
+                                                        <ColumnNameChange
+                                                            nameChange={nameChange}
+                                                            index={index}
+                                                            findOptions={findOptions}
+                                                            toggleLoading={toggleLoading}
+                                                            handleColumnNameChange={handleColumnNameChange}
+                                                            columnNameChanges={columnNameChanges}
+                                                            removeColumnChange={(i) => setColumnNameChanges(prev => prev.filter((_, idx) => idx !== i))}
+                                                            exportType={exportType}
+                                                            targetDatabase={targetDatabase}
+                                                            targetTable={targetTable}
+                                                        />
+                                                        <br />
+                                                    </>
+                                                )
+                                            ))}
+                                           {targetDatabase && targetTable || !exportType ? (
+                                               <button onClick={() => setColumnNameChanges(prev => [...prev, { original: '', new: '' }])}>Add Column</button>
+                                           ) : (
+                                               <div style={{ color: '#999' }}>Select a database and table to add columns.</div>
+                                           )}
+
+                                        </div>
+                                    </div>
+                                )}
+
                                 <br /><br />
                                 <label>Row limit</label>
                                 <input type="number" value={editRowLimit} onChange={(e) => setEditRowLimit(e.target.value)} style={{fontSize:"20px"}}/> <br />
@@ -574,6 +813,18 @@ export default function Templates() {
                 </div>
             </Modal>
             {/* end edit modal */}
+
+            {/* Loading modal */}
+            <Modal 
+                isOpen={loading} 
+                onRequestClose={() => toggleLoading(false)}
+                contentLabel="Loading"
+                overlayClassName={"modal-overlay"}
+                className={"loading-modal"}
+            >
+                <p>{loadingMessage || "Processing export, please wait..."}</p>
+                <div className="loader"></div>
+            </Modal>
         </>
     );
 }

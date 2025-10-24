@@ -11,15 +11,17 @@ class QueryTemplate extends Model
 
     protected $fillable = [
         'name',
-        'query',
         'database',
         'table',
+        'query',
+        'export',
         'user_id',
         'UI'
     ];
 
     protected $casts = [
         'query' => 'array',
+        'export' => 'array',
         'UI' => 'array',
     ];
 

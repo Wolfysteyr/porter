@@ -642,11 +642,21 @@ export default function TQB(){
             selectedRFKs
         }
 
+        let eggsport = {
+            exportType: exportType,
+            targetDatabase: targetDatabase,
+            targetTable: targetTable,
+            findReplaceRules: FRRules,
+            limitOffsetRules: limitOffsetRules,
+            columnNameChanges: columnNameChanges
+        }
+
         const payload = {
             name: templateName,
-            query: query,
             database: selectedDatabase, 
             table: selectedTable,
+            query: query,
+            export: eggsport,
             user_id: user.id,
             // TODO: add rules from export here later
             UI: UI

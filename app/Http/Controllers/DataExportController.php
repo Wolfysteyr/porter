@@ -6,19 +6,23 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\ExternalDbController;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\ConnectionInterface; // added for defensive checks
+use Illuminate\Database\QueryException;
 
 class DataExportController extends ExternalDbController
 {
 
     public function checkExportType(Request $request) {
-        $exportType = (int) $request->input('exportType', 0);
-        if ($exportType === 0) {
-            Log::info('ExportDataCSV called');
-            return $this->exportDataCSV($request);
-        } else if ($exportType === 1) {
-            Log::info('ExportDataDB called');
-            return $this->exportDataDB($request);
-        }
+        // normalize export payload (accept camelCase or snake_case)
+        $export = $request->input('export', []);
+        $exportType = (int) ($export['exportType'] ?? $export['export_type'] ?? $request->input('export.exportType', 0));
+         if ($exportType === 0) {
+             Log::info('ExportDataCSV called');
+             return $this->exportDataCSV($request);
+         } else if ($exportType === 1) {
+             Log::info('ExportDataDB called');
+             return $this->exportDataDB($request);
+         }
     }
     // exports the data from an external database table to a CSV file
     public function exportDataCSV(Request $request) {
@@ -28,19 +32,25 @@ class DataExportController extends ExternalDbController
         $columns = $request->input('query.columns', []);
         $foreign_keys = $request->input('query.foreign_keys', []);
         $whereConds = $request->input('query.where', []);
-        $limit = $request->input('limit', 1000); // default limit for export
-        $offset = $request->input('offset', 0);
-        $findReplaceRules = $request->input('find_replace_rules', []);
-        $colNameChanges = $request->input('column_name_changes', []);
-        // Build mapping: original => new
-        $colNameMap = [];
-        if (!empty($colNameChanges) && is_array($colNameChanges)) {
-            foreach ($colNameChanges as $change) {
-                if (isset($change['original'], $change['new']) && $change['original'] && $change['new']) {
-                    $colNameMap[$change['original']] = $change['new'];
-                }
-            }
-        }
+
+        // normalize export block (accept multiple frontend shapes)
+        $export = $request->input('export', []);
+        // limit/offset: prefer export.limit & export.offset, fall back to limitOffsetRules array
+        $limit = $export['limit'] ?? ($export['limitOffsetRules'][0]['limit'] ?? $request->input('export.limitOffsetRules.limit', 1000));
+        $offset = $export['offset'] ?? ($export['limitOffsetRules'][0]['offset'] ?? $request->input('export.limitOffsetRules.offset', 0));
+        // find/replace rules (accept snake_case or camelCase keys)
+        $findReplaceRules = $export['find_replace_rules'] ?? $export['findReplaceRules'] ?? $request->input('export.find_replace_rules', []);
+        // column name changes
+        $colNameChanges = $export['column_name_changes'] ?? $export['columnNameChanges'] ?? $request->input('export.column_name_changes', []);
+         // Build mapping: original => new
+         $colNameMap = [];
+         if (!empty($colNameChanges) && is_array($colNameChanges)) {
+             foreach ($colNameChanges as $change) {
+                 if (isset($change['original'], $change['new']) && $change['original'] && $change['new']) {
+                     $colNameMap[$change['original']] = $change['new'];
+                 }
+             }
+         }
 
         // use the inherited helper to get a dynamic connection
         $conn = $this->getExternalConnection($database);
@@ -311,18 +321,25 @@ class DataExportController extends ExternalDbController
     }
 
     public function exportDataDB(Request $request) {
-        $template_name = $request->input('template_name');
+        set_time_limit(300); // allow up to 5 minutes
+                $template_name = $request->input('template_name');
         $database = $request->input('database');
         $table = $request->input('table');
         $columns = $request->input('query.columns', []);
         $foreign_keys = $request->input('query.foreign_keys', []);
         $whereConds = $request->input('query.where', []);
-        $limit = $request->input('limit', 1000); // default limit for export
-        $offset = $request->input('offset', 0);
-        $findReplaceRules = $request->input('find_replace_rules', []);
-        $colNameChanges = $request->input('column_name_changes', []);
-        $target_database = $request->input('target_database');
-        $target_table = $request->input('target_table');
+
+        // normalize export block (accept multiple frontend shapes)
+        $export = $request->input('export', []);
+        // limit/offset: prefer export.limit & export.offset, fall back to limitOffsetRules array
+        $limit = $export['limit'] ?? ($export['limitOffsetRules'][0]['limit'] ?? $request->input('export.limitOffsetRules.limit', 1000));
+        $offset = $export['offset'] ?? ($export['limitOffsetRules'][0]['offset'] ?? $request->input('export.limitOffsetRules.offset', 0));
+        // find/replace rules (accept snake_case or camelCase keys)
+        $findReplaceRules = $export['find_replace_rules'] ?? $export['findReplaceRules'] ?? $request->input('export.find_replace_rules', []);
+        // column name changes
+        $colNameChanges = $export['column_name_changes'] ?? $export['columnNameChanges'] ?? $request->input('export.column_name_changes', []);
+        $target_database = $export['target_database'] ?? $export['targetDatabase'] ?? $request->input('export.target_database', null);
+        $target_table = $export['target_table'] ?? $export['targetTable'] ?? $request->input('export.target_table', null);
 
         // Build mapping: original => new
         $colNameMap = [];
@@ -610,12 +627,101 @@ class DataExportController extends ExternalDbController
         // Insert data into target table
         if ($mappedResults->isNotEmpty()) {
             // Filter data to only include columns that exist in the target table
-            $filteredResults = $mappedResults->map(function($row) use ($targetCols) {
+            $filteredResultsAll = $mappedResults->map(function($row) use ($targetCols) {
                 return array_intersect_key($row, array_flip($targetCols));
-            });
-            $targetConn->table($targetTableForQuery)->insert($filteredResults->toArray());
-        }
+            })->toArray();
 
+            // Optional: allow caller to request skipping FK checks (MySQL only)
+            $skipFk = $export['skip_foreign_checks'] ?? $export['skipForeignChecks'] ?? false;
+
+            // Default chunk size; can be overridden via export.insert_chunk_size
+            $desiredChunk = intval($export['insert_chunk_size'] ?? 1000);
+            $desiredChunk = $desiredChunk > 0 ? $desiredChunk : 1000;
+
+            // Protect against too many bound params: compute safe rows per chunk
+            $maxPlaceholders = 60000; // conservative (MySQL/PDO limit ~65535)
+            $colsCount = count($filteredResultsAll[0] ?? []);
+            if ($colsCount > 0) {
+                $maxRowsPerChunk = max(1, (int) floor($maxPlaceholders / $colsCount));
+                $chunkSize = min($desiredChunk, $maxRowsPerChunk);
+            } else {
+                $chunkSize = $desiredChunk;
+            }
+
+            try {
+                if ($skipFk && $targetDriver === 'mysql') {
+                    $targetConn->statement('SET FOREIGN_KEY_CHECKS=0');
+                }
+
+                $totalInserted = 0;
+                $totalSkipped = 0;
+                foreach (array_chunk($filteredResultsAll, $chunkSize) as $chunkIndex => $chunk) {
+                    if (empty($chunk)) continue;
+                    try {
+                        // try batch insert first
+                        $targetConn->table($targetTableForQuery)->insert($chunk);
+                        $totalInserted += count($chunk);
+                        Log::debug("Inserted chunk " . ($chunkIndex+1) . " (rows: " . count($chunk) . ")");
+                    } catch (QueryException $qe) {
+                        // If it's a constraint/foreign-key related error, fallback to per-row inserts and skip failing rows
+                        $msg = $qe->getMessage();
+                        $isConstraint = stripos($msg, 'foreign key') !== false
+                            || stripos($msg, 'integrity constraint') !== false
+                            || stripos($msg, 'Cannot add or update a child row') !== false
+                            || $qe->getCode() == 23000;
+
+                        if ($isConstraint) {
+                            Log::warning("Chunk insert failed due to constraint; falling back to per-row insert for chunk " . ($chunkIndex+1));
+                            foreach ($chunk as $rowIndex => $singleRow) {
+                                try {
+                                    $targetConn->table($targetTableForQuery)->insert($singleRow);
+                                    $totalInserted++;
+                                } catch (QueryException $qeRow) {
+                                    // skip row and log minimal detail (avoid leaking sensitive data)
+                                    $totalSkipped++;
+                                    Log::warning("Skipping row due to insert error (constraint). chunk={$chunkIndex}, rowInChunk={$rowIndex}, err=" . $qeRow->getMessage());
+                                    // continue with next row
+                                    continue;
+                                }
+                            }
+                        } else {
+                            // rethrow non-constraint related exception
+                            throw $qe;
+                        }
+                    }
+                }
+
+                if ($skipFk && $targetDriver === 'mysql') {
+                    $targetConn->statement('SET FOREIGN_KEY_CHECKS=1');
+                }
+                Log::info("Insert summary: inserted={$totalInserted}, skipped={$totalSkipped}");
+             } catch (QueryException $e) {
+                 // Log full DB error for diagnostics
+                 Log::error('Target insert failed: ' . $e->getMessage());
+ 
+                 // Try to extract constraint / referenced table info from MySQL message
+                 $msg = $e->getMessage();
+                 $constraint = null;
+                 $refTable = null;
+                 $refCol = null;
+                 if (preg_match("/CONSTRAINT `([^`]*)` .*REFERENCES `?([a-zA-Z0-9_]+)`? \\(`?([a-zA-Z0-9_]+)`?\\)/", $msg, $m)) {
+                     $constraint = $m[1] ?? null;
+                     $refTable = $m[2] ?? null;
+                     $refCol = $m[3] ?? null;
+                 }
+ 
+                 $userMsg = 'Integrity constraint violation during insert.';
+                 if ($constraint) $userMsg .= " Constraint: {$constraint}.";
+                 if ($refTable && $refCol) $userMsg .= " Missing referenced row in {$refTable}.{$refCol}.";
+                 $userMsg .= ' Ensure referenced parent rows exist in the target database, insert parent tables first, or set export.skip_foreign_checks=true to bypass checks (MySQL only).';
+ 
+                 return response()->json([
+                     'error' => $userMsg,
+                     'sql_error' => $msg
+                 ], 400);
+             }
+         }
+        Log::info('Data exported to database successfully');
         return response()->json(['message' => 'Data exported to database successfully']);
     }
 }
