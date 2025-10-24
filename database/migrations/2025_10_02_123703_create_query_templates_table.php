@@ -19,6 +19,7 @@ return new class extends Migration
             $table->json('query');
             $table->text('export');
             $table->unsignedBigInteger('user_id')->nullable();
+            $table->json('auto');
             $table->json('UI');
             $table->timestamps();
         });

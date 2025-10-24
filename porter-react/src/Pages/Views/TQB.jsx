@@ -636,6 +636,29 @@ export default function TQB(){
        }
 
         console.log(query);
+
+        let auto = {}
+        if (isAutomated) {
+            if( automationSchedule != 'every') {
+                auto = {
+                    schedule: automationSchedule,
+                    interval: null,
+                    unit: null
+                }
+            } else if (automationSchedule === 'every') {
+                auto = {
+                    schedule: automationSchedule,
+                    interval: automationPeriod,
+                    unit: automationUnit
+                }
+            }
+        } else {
+            auto = {
+                schedule: null,
+                interval: null,
+                unit: null
+            }
+        };
         
         let UI = {
             toggles,
@@ -651,14 +674,34 @@ export default function TQB(){
             columnNameChanges: columnNameChanges
         }
 
+        // Automation payload construction & validation (frontend-only logic)
+        let automation = { enabled: false };
+        if (isAutomated) {
+            if (automationSchedule === 'Every ...') {
+                const n = Number(automationPeriod);
+                if (!n || n <= 0) {
+                    showMessage('Please provide a positive number for automation interval.', false);
+                    return; // abort save
+                }
+                automation = { enabled: true, schedule: automationSchedule, interval: n, unit: automationUnit };
+            } else if (automationSchedule) {
+                automation = { enabled: true, schedule: automationSchedule };
+            } else {
+                // no schedule chosen
+                showMessage('Please choose an automation schedule or disable automation.', false);
+                return;
+            }
+        }
+
         const payload = {
             name: templateName,
             database: selectedDatabase, 
             table: selectedTable,
             query: query,
             export: eggsport,
+            automation: automation,
             user_id: user.id,
-            // TODO: add rules from export here later
+            auto: auto,
             UI: UI
         };
         console.log("Payload for saving template:", payload);
@@ -701,6 +744,27 @@ export default function TQB(){
     const selectedRFKsCount = selectedRFKs && typeof selectedRFKs === 'object'
         ? Object.values(selectedRFKs).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0)
         : 0;
+
+    // Automation state and logic
+    const [isAutomated, setIsAutomated] = useState(false);
+    const [automationSchedule, setAutomationSchedule] = useState('every'); // '', 'Every ...', 'Daily', 'Weekly', etc.
+    const [automationPeriod, setAutomationPeriod] = useState('5'); // number for custom interval when 'Every ...' chosen
+    const [automationUnit, setAutomationUnit] = useState('minutes'); // unit for custom interval
+
+    const handleAutomationToggle = (checked) => {
+        // Switch may pass checked boolean or no arg
+        const next = typeof checked === 'boolean' ? checked : !isAutomated;
+        setIsAutomated(next);
+        if (!next) {
+            // clearing schedule when disabled (frontend-only decision)
+            setAutomationSchedule('every');
+            setAutomationPeriod('5');
+            setAutomationUnit('minutes');
+        } else {
+            // provide a sensible default when enabling
+            setAutomationSchedule(prev => prev || 'Daily');
+        }
+    };
 
     function handleMenuToggle() {
         setIsMenuOpen(!isMenuOpen);
@@ -927,7 +991,7 @@ export default function TQB(){
                 const grouped = await populateFindOptions();
                 setFindOptions(grouped || {});
             })();}}>
-                        <label>Export [WIP]</label> <strong>{menus["export-menu"] ? "<" : ">"}</strong>
+                        <label>Export</label> <strong>{menus["export-menu"] ? "<" : ">"}</strong>
                     </div>
                     <div className={`rule-submenu-export` + (menus["export-menu"] ? ' open' : '')}> {/* Special case for export menu as it needs more space */}
                         <h3>Export Rules</h3>
@@ -1060,6 +1124,43 @@ export default function TQB(){
                                         </div>
                                     </div>
                                 )}
+                    </div>
+                    <div className={`rule-item` + (menus["auto-menu"] ? ' open' : '')} onClick={() => toggleMenus("auto-menu")}>
+                        <label>Automation</label> <strong>{menus["auto-menu"] ? "<" : ">"}</strong>
+                    </div>
+                    <div className={`rule-submenu-auto` + (menus["auto-menu"] ? ' open' : '')}>
+                        <h3>Automate?</h3>
+                        <Switch checked={isAutomated} onChange={handleAutomationToggle} />
+                        <div className="automation-settings">
+                            {isAutomated && (
+                                <>
+                                    <label>
+                                        Automation Schedule:
+                                    </label>
+                                    <select value={automationSchedule} defaultValue={"every"} onChange={(e) => setAutomationSchedule(e.target.value)} disabled={!isAutomated}>
+                                        <option value="every">Every ...</option>
+                                        <option value="hourly">Hourly</option>
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                        <option value="yearly">Yearly</option>
+                                    </select>
+                                    {automationSchedule === 'every' && isAutomated && (
+                                        <>
+                                            <input type="number" placeholder="Period"  value={automationPeriod} onChange={(e) => setAutomationPeriod(e.target.value)} />
+                                            <select defaultValue={"minutes"} value={automationUnit} onChange={(e) => setAutomationUnit(e.target.value)}>
+                                                <option value="minutes">minutes</option>
+                                                <option value="hours">hours</option>
+                                                <option value="days">days</option>
+                                                <option value="weeks">weeks</option>
+                                                <option value="months">months</option>
+                                                <option value="years">years</option>
+                                            </select>
+                                        </>
+                                    )}
+                                </>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

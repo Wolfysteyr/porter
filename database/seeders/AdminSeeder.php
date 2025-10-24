@@ -18,7 +18,7 @@ class AdminSeeder extends Seeder
             ['email' => 'porter@vtl.lv'],
             [
                 'name' => 'Porter Admin',
-                'password' => Hash::make('StrandedOnTheBeach'), // Change this to a secure password
+                'password' => Hash::make('stranded'), // Change this to a secure password
                 'admin' => true,
             ]
         );

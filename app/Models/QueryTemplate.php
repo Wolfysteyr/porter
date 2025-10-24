@@ -16,12 +16,16 @@ class QueryTemplate extends Model
         'query',
         'export',
         'user_id',
+        'auto',
+        'last_auto_run_at',
         'UI'
     ];
 
     protected $casts = [
         'query' => 'array',
         'export' => 'array',
+        'auto' => 'array',
+        'last_auto_run_at' => 'datetime',
         'UI' => 'array',
     ];
 
