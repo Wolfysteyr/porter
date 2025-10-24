@@ -320,6 +320,76 @@ class DataExportController extends ExternalDbController
             ->header('Content-Disposition', "attachment; filename=\"$filename\"");
     }
 
+    private function dedupeRowsByPk($chunk, $targetConn, $targetTableForQuery, $targetPkCols, $validateIdentifier) {
+        if (empty($targetPkCols)) {
+            return $chunk; // No PK info: cannot dedupe, return all
+        }
+
+        $toInsert = [];
+        if (count($targetPkCols) === 1) {
+            $pk = $targetPkCols[0];
+            $vals = array_filter(array_column($chunk, $pk), function($v) { return $v !== null; });
+            if (!empty($vals)) {
+                $existing = $targetConn->table($targetTableForQuery)->whereIn($pk, array_values($vals))->pluck($pk)->map(function($v){ return (string)$v; })->toArray();
+                foreach ($chunk as $r) {
+                    $valKey = isset($r[$pk]) ? (string)$r[$pk] : null;
+                    if ($valKey === null || in_array($valKey, $existing, true)) {
+                        continue;
+                    }
+                    $toInsert[] = $r;
+                }
+            } else {
+                $toInsert = $chunk;
+            }
+        } else {
+            // Composite PK
+            $clauses = [];
+            $bindings = [];
+            foreach ($chunk as $r) {
+                $parts = [];
+                $hasAll = true;
+                foreach ($targetPkCols as $pk) {
+                    if (!array_key_exists($pk, $r)) { $hasAll = false; break; }
+                    $parts[] = "{$pk} = ?";
+                    $bindings[] = $r[$pk];
+                }
+                if ($hasAll) $clauses[] = '(' . implode(' AND ', $parts) . ')';
+            }
+            $existingKeys = [];
+            if (!empty($clauses)) {
+                $rawWhere = implode(' OR ', $clauses);
+                try {
+                    $existingRows = $targetConn->table($targetTableForQuery)->select($targetPkCols)->whereRaw($rawWhere, $bindings)->get();
+                    foreach ($existingRows as $er) {
+                        $keyParts = [];
+                        $erArr = (array)$er;
+                        foreach ($targetPkCols as $pk) $keyParts[] = (string)($erArr[$pk] ?? '');
+                        $existingKeys[] = implode('||', $keyParts);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Composite PK existence check failed; skipping dedupe for this chunk: ' . $e->getMessage());
+                    $existingKeys = [];
+                }
+            }
+            foreach ($chunk as $r) {
+                $keyParts = [];
+                $hasAll = true;
+                foreach ($targetPkCols as $pk) {
+                    if (!array_key_exists($pk, $r)) { $hasAll = false; break; }
+                    $keyParts[] = (string)$r[$pk];
+                }
+                if ($hasAll) {
+                    $k = implode('||', $keyParts);
+                    if (in_array($k, $existingKeys, true)) {
+                        continue;
+                    }
+                }
+                $toInsert[] = $r;
+            }
+        }
+        return $toInsert;
+    }
+
     public function exportDataDB(Request $request) {
         set_time_limit(300); // allow up to 5 minutes
                 $template_name = $request->input('template_name');
@@ -624,6 +694,17 @@ class DataExportController extends ExternalDbController
         // Fetch target table columns
         $targetCols = $this->fetchColumnNames($targetConn, $targetDriver, $target_table, $targetSchema);
 
+        // Detect target PK columns for deduplication (ensure variable is always defined)
+        $targetPkCols = [];
+        try {
+            $pk = $this->fetchPrimaryKeys($targetConn, $targetDriver, $target_table, $targetSchema);
+            if (is_array($pk)) {
+                $targetPkCols = $pk;
+            }
+        } catch (\Exception $e) {
+            Log::warning('Unable to detect primary keys for target table: ' . ($e->getMessage() ?? ''));
+        }
+
         // Insert data into target table
         if ($mappedResults->isNotEmpty()) {
             // Filter data to only include columns that exist in the target table
@@ -657,11 +738,20 @@ class DataExportController extends ExternalDbController
                 $totalSkipped = 0;
                 foreach (array_chunk($filteredResultsAll, $chunkSize) as $chunkIndex => $chunk) {
                     if (empty($chunk)) continue;
+
+                    // Use the new helper for deduplication
+                    $toInsert = $this->dedupeRowsByPk($chunk, $targetConn, $targetTableForQuery, $targetPkCols, $validateIdentifier);
+
+                    if (empty($toInsert)) {
+                        Log::debug("Chunk " . ($chunkIndex+1) . " skipped entirely due to duplicates.");
+                        $totalSkipped += count($chunk);
+                        continue;
+                    }
+
                     try {
-                        // try batch insert first
-                        $targetConn->table($targetTableForQuery)->insert($chunk);
-                        $totalInserted += count($chunk);
-                        Log::debug("Inserted chunk " . ($chunkIndex+1) . " (rows: " . count($chunk) . ")");
+                        $targetConn->table($targetTableForQuery)->insert($toInsert);
+                        $totalInserted += count($toInsert);
+                        Log::debug("Inserted chunk " . ($chunkIndex+1) . " (rows: " . count($toInsert) . ")");
                     } catch (QueryException $qe) {
                         // If it's a constraint/foreign-key related error, fallback to per-row inserts and skip failing rows
                         $msg = $qe->getMessage();
@@ -672,20 +762,16 @@ class DataExportController extends ExternalDbController
 
                         if ($isConstraint) {
                             Log::warning("Chunk insert failed due to constraint; falling back to per-row insert for chunk " . ($chunkIndex+1));
-                            foreach ($chunk as $rowIndex => $singleRow) {
+                            foreach ($toInsert as $rowIndex => $singleRow) {
                                 try {
                                     $targetConn->table($targetTableForQuery)->insert($singleRow);
                                     $totalInserted++;
                                 } catch (QueryException $qeRow) {
-                                    // skip row and log minimal detail (avoid leaking sensitive data)
                                     $totalSkipped++;
                                     Log::warning("Skipping row due to insert error (constraint). chunk={$chunkIndex}, rowInChunk={$rowIndex}, err=" . $qeRow->getMessage());
-                                    // continue with next row
-                                    continue;
                                 }
                             }
                         } else {
-                            // rethrow non-constraint related exception
                             throw $qe;
                         }
                     }
@@ -722,6 +808,80 @@ class DataExportController extends ExternalDbController
              }
          }
         Log::info('Data exported to database successfully');
-        return response()->json(['message' => 'Data exported to database successfully']);
+        return response()->json(['message' => 'Data exported to database successfully', 'total_inserted' => $totalInserted, 'total_skipped' => $totalSkipped]);
+    }
+
+    private function fetchPrimaryKeys($conn, $driver, $table, $schema = null) {
+        $driver = strtolower($driver ?? '');
+        $tableName = $table;
+        $schemaName = $schema;
+
+        try {
+            switch ($driver) {
+                case 'mysql':
+                case 'mariadb':
+                    $dbName = $conn->getConfig('database');
+                    $rows = $conn->select(
+                        'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE COLUMN_KEY = \'PRI\' AND TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+                        [$dbName, $tableName]
+                    );
+                    return array_map(function($r){ $r = (array)$r; return $r['COLUMN_NAME'] ?? $r['column_name'] ?? null; }, $rows);
+
+                case 'pgsql':
+                case 'postgres':
+                case 'postgresql':
+                    $schemaName = $schemaName ?: 'public';
+                    $rows = $conn->select(
+                        'SELECT a.attname AS column_name
+                         FROM pg_index i
+                         JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                         JOIN pg_class c ON c.oid = i.indrelid
+                         JOIN pg_namespace n ON c.relnamespace = n.oid
+                         WHERE i.indisprimary = TRUE AND c.relname = ? AND n.nspname = ?',
+                        [$tableName, $schemaName]
+                    );
+                    return array_map(function($r){ $r = (array)$r; return $r['column_name'] ?? null; }, $rows);
+
+                case 'sqlite':
+                    $rows = $conn->select("PRAGMA table_info('".$tableName."')");
+                    $cols = [];
+                    foreach ($rows as $r) {
+                        $r = (array)$r;
+                        // PRAGMA table_info returns 'pk' and 'name' fields
+                        if (!empty($r['pk']) && (int)$r['pk'] > 0) {
+                            $cols[] = $r['name'] ?? $r['NAME'] ?? null;
+                        }
+                    }
+                    return array_values(array_filter($cols));
+
+                case 'sqlsrv':
+                case 'sqlserver':
+                    $schemaName = $schemaName ?: ($conn->getConfig('schema') ?? 'dbo');
+                    $rows = $conn->select(
+                        "SELECT c.name AS column_name
+                         FROM sys.indexes i
+                         JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+                         JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+                         JOIN sys.tables t ON i.object_id = t.object_id
+                         JOIN sys.schemas s ON t.schema_id = s.schema_id
+                         WHERE i.is_primary_key = 1 AND t.name = ? AND s.name = ?",
+                        [$tableName, $schemaName]
+                    );
+                    return array_map(function($r){ $r = (array)$r; return $r['column_name'] ?? null; }, $rows);
+
+                default:
+                    // Fallback: try INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                    $dbName = $conn->getConfig('database') ?? $schemaName;
+                    $rows = $conn->select(
+                        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_NAME = ?".
+                        ($dbName ? " AND TABLE_SCHEMA = ?" : ""),
+                        $dbName ? [$tableName, $dbName] : [$tableName]
+                    );
+                    return array_map(function($r){ $r = (array)$r; return $r['COLUMN_NAME'] ?? $r['column_name'] ?? null; }, $rows);
+            }
+        } catch (\Exception $e) {
+            Log::warning('fetchPrimaryKeys failed: ' . $e->getMessage());
+            return [];
+        }
     }
 }

@@ -476,7 +476,8 @@ export default function Templates() {
                 navigate('/templates', { state: { message: `Export successful! Exported to ${template.name + '_export.csv'}` } });
                 
             } else {
-                navigate('/templates', { state: { message: `Export successful! Exported to  ${template.export.targetDatabase}, table ${template.export.targetTable}` } });
+                const blob = await response.json();
+                navigate('/templates', { state: { message: `Export successful! Exported to  ${template.export.targetDatabase}, table ${template.export.targetTable}. ${blob.total_inserted} rows inserted, ${blob.total_skipped} rows skipped.` } });
             }
         } catch (error) {
             console.error('Error exporting data:', error);
