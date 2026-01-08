@@ -1,3 +1,12 @@
+// OBSOLETE PAGE, ITS ENTIRE LOGIC WAS MOVED TO TQB
+//
+//
+//
+//
+//
+//
+//
+//
 import React, { useEffect, useState, useCallback} from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Fragment } from 'react';

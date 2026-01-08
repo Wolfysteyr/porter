@@ -519,7 +519,7 @@ export default function Templates() {
                                 <span className='template-updated-at'>{new Date(template.updated_at).toLocaleDateString()}</span>
                                 <div className='template-actions'>
                                     <button onClick={() => handleUseTemplate(template)}  title='Click to use template'  className='use-button'>Use</button>
-                                    <button onClick={() => handleEdit(template.id)} title='Click to edit template' className='edit-button'>Edit</button>
+                                    <button onClick={() => handleEdit(template.id)} title='Click to edit template' className='edit-button'>Edit [wip]</button>
                                     <button onClick={() => openDeleteModal(template)} title='Click to delete template' className='delete-button'>X</button>
                                 </div>
                             </li>

@@ -68,7 +68,8 @@ export default function Layout(){
                                     <div className="bar3"></div>
                                 </div>
                             <div className={`logout-container ${menuVisible === 1 ? 'active' : menuVisible === 2 ? 'closing' : ''}`}>
-                                {user.admin === 1 && <Link to="/register" onClick={toggleMenu} className="nav-link">Register a new account</Link>}
+                                 <span>WIP lang</span> <br />
+                                {user.admin === 1 && <Link to="/register" onClick={toggleMenu} className="nav-link">Register a new account</Link>} <br /> <br />
                                 <Link className="nav-link" onClick={handleLogout} style={{ cursor: 'pointer' }}>Logout</Link>
                             </div>
                         </div> 
