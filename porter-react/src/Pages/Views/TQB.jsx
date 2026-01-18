@@ -5,9 +5,7 @@ import { useNavigate } from "react-router-dom";
 import Modal from 'react-modal';
 import Tippy from '@tippyjs/react';
 import Switch from 'react-switch';
-import FRRuleField from "../../Components/FRRuleField";
-import ColumnNameChange from "../../Components/ColumnNameChange";
-import LimitOffsetRuleField from "../../Components/LimitOffsetRuleField.jsx";
+import TemplateSideMenu from "../../Components/TemplateSideMenu";
 
 
 
@@ -136,6 +134,278 @@ export default function TQB(){
     // selected referenced foreign keys stored per parent FK constraint: { [parentCol]: [fkColumnName] }
     const [selectedRFKs, setSelectedRFKs] = useState({}); // { parentCol: [fkcol, ...] }
     const [toggleNewDBModal, setToggleNewDBModal] = useState(false);
+    
+    // side menu UI state (moved from TemplateSideMenu)
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [menus, setMenus] = useState({});
+
+    // computed counts for columns and selected referenced FKs
+    const selectedColsCount = Array.isArray(selectedCols) ? selectedCols.length : 0;
+    const selectedRFKsCount = selectedRFKs && typeof selectedRFKs === 'object'
+        ? Object.values(selectedRFKs).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0)
+        : 0;
+
+    // Automation state and logic
+    const [isAutomated, setIsAutomated] = useState(false);
+    const [automationSchedule, setAutomationSchedule] = useState('every');
+    const [automationPeriod, setAutomationPeriod] = useState('5');
+    const [automationUnit, setAutomationUnit] = useState('minutes');
+
+    const handleAutomationToggle = (checked) => {
+        const next = typeof checked === 'boolean' ? checked : !isAutomated;
+        setIsAutomated(next);
+        if (!next) {
+            setAutomationSchedule('every');
+            setAutomationPeriod('5');
+            setAutomationUnit('minutes');
+        } else {
+            setAutomationSchedule(prev => prev || 'Daily');
+        }
+    };
+
+    // helper toggles for FK expansion etc.
+    const toggle = (id) => {
+        setToggles((prev) => ({ ...prev, [id]: !prev[id] }));
+    };
+    const isToggled = (id) => !!toggles[id];
+
+    // FR/Limit/Column name helpers
+    const addFRRule = () => setFRRules((prev) => [...prev, { find: "", replace: "" }]);
+    const addLimitOffset = () => setLimitOffsetRules((prev) => [...prev, { limit: 1000, offset: 0 }]);
+    const handleFRRuleChange = (index, field, value) => setFRRules((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+    const handleLimitOffsetChange = (index, field, value) => setLimitOffsetRules((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+    const handleColumnNameChange = useCallback((index, field, value) => {
+        setColumnNameChanges((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+    }, []);
+    const removeFRRule = (index) => setFRRules((prev) => prev.filter((_, i) => i !== index));
+    const removeLimitOffsetRule = (index) => setLimitOffsetRules((prev) => prev.filter((_, i) => i !== index));
+    const removeColumnChange = (index) => setColumnNameChanges((prev) => prev.filter((_, i) => i !== index));
+
+    // change selected columns
+    const handleChange = (col) => {
+        setSelectedCols((prev) => prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]);
+    };
+
+    // where clause helpers
+    const WHERE_OPERATORS = [
+        '=', '!=', '<', '<=', '>', '>=',
+        'LIKE', 'NOT LIKE', 'IN', 'NOT IN',
+        'IS NULL', 'IS NOT NULL'
+    ];
+
+    const handleSelectedWhere = (e, idx) => {
+        const val = e.target.value;
+        setSelectedWhere((prev = []) => {
+            const copy = [...prev];
+            if (idx === copy.length) {
+                if (!val) return copy;
+                return [...copy, { column: val, operator: '=', value: '' }];
+            }
+            if (!val) {
+                if (copy.length > 1) {
+                    copy.splice(idx, 1);
+                    return copy;
+                }
+                return [];
+            }
+            copy[idx] = { ...(copy[idx] || {}), column: val, operator: copy[idx]?.operator ?? '=', value: copy[idx]?.value ?? '' };
+            return copy;
+        });
+    };
+
+    const handleWhereOperatorChange = (idx, operator) => {
+        setSelectedWhere((prev = []) => {
+            const copy = [...prev];
+            if (!copy[idx]) return copy;
+            copy[idx] = { ...copy[idx], operator };
+            if (operator === 'IS NULL' || operator === 'IS NOT NULL') copy[idx].value = '';
+            return copy;
+        });
+    };
+
+    const handleWhereValueChange = (idx, value) => {
+        setSelectedWhere((prev = []) => {
+            const copy = [...prev];
+            if (!copy[idx]) return copy;
+            copy[idx] = { ...copy[idx], value };
+            return copy;
+        });
+    };
+
+    // manage selected referenced foreign keys and structured foreignKeysSelection
+    function handleFKSelection(parentCol, tableName, fkColumn) {
+        setSelectedRFKs((prev) => {
+            const copy = { ...prev };
+            const list = Array.isArray(copy[parentCol]) ? [...copy[parentCol]] : [];
+            const idx = list.indexOf(fkColumn);
+            if (idx === -1) list.push(fkColumn); else list.splice(idx, 1);
+            if (list.length) copy[parentCol] = list; else delete copy[parentCol];
+            return copy;
+        });
+
+        setForeignKeysSelection((prev) => {
+            const copy = prev.map(p => ({ parentCol: p.parentCol, fkTables: p.fkTables.map(t => ({ tableName: t.tableName, fkColumns: [...t.fkColumns] })) }));
+            const parentIdx = copy.findIndex(p => p.parentCol === parentCol);
+            if (parentIdx === -1) {
+                return [...copy, { parentCol, fkTables: [{ tableName, fkColumns: [fkColumn] }] }];
+            }
+            const parent = copy[parentIdx];
+            const tableIdx = parent.fkTables.findIndex(t => t.tableName === tableName);
+            if (tableIdx === -1) parent.fkTables.push({ tableName, fkColumns: [fkColumn] });
+            else {
+                const table = parent.fkTables[tableIdx];
+                const colIdx = table.fkColumns.indexOf(fkColumn);
+                if (colIdx === -1) table.fkColumns.push(fkColumn);
+                else {
+                    table.fkColumns.splice(colIdx, 1);
+                    if (table.fkColumns.length === 0) parent.fkTables.splice(tableIdx, 1);
+                }
+            }
+            if (parent.fkTables.length === 0) copy.splice(parentIdx, 1);
+            return copy;
+        });
+    }
+
+    function resetRules() {
+        setSelectedCols([]);
+        setSelectedWhere([]);
+        setForeignKeysSelection([]);
+        setSelectedRFKs([]);
+        setRowLimit("");
+        setUpdatedData(false);
+    }
+
+    function handleMenuToggle() {
+        setIsMenuOpen(!isMenuOpen);
+    }
+
+    function toggleMenus(menuName) {
+        setMenus(prevState => {
+            const newState = {};
+            Object.keys(prevState).forEach(key => { newState[key] = false; });
+            newState[menuName] = !prevState[menuName];
+            return newState;
+        });
+    }
+
+    function handleNewDatabase($database) {
+        if ($database !== "New Database") {
+            setSelectedDatabase($database);
+            setTableCols([]);
+            setTableData([]);
+            setSelectedCols([]);
+            setSelectedWhere([]);
+            setForeignKeysSelection([]);
+            setUpdatedData(false);
+            return;
+        }
+        setToggleNewDBModal(true);
+    }
+
+    // populate find options (API) — kept in view
+    async function populateFindOptions() {
+        try {
+            if (Object.keys(findOptions).length > 0) return findOptions;
+            toggleLoading(true);
+            const payload = {
+                name: selectedDatabase,
+                columns: selectedCols.length > 0 ? selectedCols : ['*'],
+                where: selectedWhere.length > 0 ? selectedWhere : [],
+                foreign_keys: foreignKeysSelection.length > 0 ? foreignKeysSelection : [],
+                limit: 10000,
+            };
+
+            const response = await fetch(`${appAddress}/api/databases/external/tables/${encodeURIComponent(selectedTable)}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}`, Accept: "application/json", 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) return {};
+            const data = await response.json();
+            const grouped = {};
+            (data.rows || []).forEach(row => {
+                Object.entries(row).forEach(([key, val]) => {
+                    if (!grouped[key]) grouped[key] = new Set();
+                    grouped[key].add(val);
+                });
+            });
+            Object.keys(grouped).forEach(key => { grouped[key] = Array.from(grouped[key]); });
+            setFindOptions(grouped);
+            return grouped;
+        } catch (err) {
+            console.error('populateFindOptions error', err);
+            return {};
+        } finally {
+            toggleLoading(false);
+        }
+    }
+
+    const handleSaveTemplate = () => {
+        setTemplateNameErr(false);
+
+        let query = {};
+        if (Array.isArray(selectedCols) && selectedCols.length > 0) query.columns = selectedCols;
+
+        if (Array.isArray(foreignKeysSelection) && foreignKeysSelection.length > 0) {
+            query.foreign_keys = foreignKeysSelection;
+        } else if (selectedRFKs && Object.keys(selectedRFKs).length > 0) {
+            const derived = Object.keys(selectedRFKs).map((parentCol) => {
+                const fkMeta = Array.isArray(foreignKeys)
+                    ? foreignKeys.find(f => f.column_name === parentCol)
+                    : Object.values(foreignKeys || {}).find(f => f.column_name === parentCol);
+                const tableName = fkMeta?.referenced_table || null;
+                const fkCols = Array.isArray(selectedRFKs[parentCol]) ? selectedRFKs[parentCol] : [];
+                return { parentCol, fkTables: tableName ? [{ tableName, fkColumns: fkCols }] : [] };
+            }).filter(item => item.fkTables && item.fkTables.length > 0);
+            if (derived.length > 0) query.foreign_keys = derived;
+        }
+
+        if (Array.isArray(selectedWhere) && selectedWhere.length > 0) query.where = selectedWhere;
+        if (Object.keys(query).length === 0) query.columns = ["*"];
+
+        let auto = {};
+        if (isAutomated) {
+            if (automationSchedule !== 'every') auto = { schedule: automationSchedule, interval: null, unit: null };
+            else auto = { schedule: automationSchedule, interval: automationPeriod, unit: automationUnit };
+        } else auto = { schedule: null, interval: null, unit: null };
+
+        let UI = { toggles, selectedRFKs };
+        let eggsport = { exportType, targetDatabase, targetTable, findReplaceRules: FRRules, limitOffsetRules, columnNameChanges };
+
+        let automation = { enabled: false };
+        if (isAutomated) {
+            if (automationSchedule === 'Every ...') {
+                const n = Number(automationPeriod);
+                if (!n || n <= 0) {
+                    showMessage('Please provide a positive number for automation interval.', false);
+                    return;
+                }
+                automation = { enabled: true, schedule: automationSchedule, interval: n, unit: automationUnit };
+            } else if (automationSchedule) automation = { enabled: true, schedule: automationSchedule };
+            else { showMessage('Please choose an automation schedule or disable automation.', false); return; }
+        }
+
+        const payload = { name: templateName, database: selectedDatabase, table: selectedTable, query, export: eggsport, automation, user_id: user.id, auto, UI };
+
+        fetch(`${appAddress}/api/query-templates`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        })
+            .then(async response => {
+                const data = await response.json();
+                if (!response.ok) {
+                    const errorMsg = data?.message || "An error occurred";
+                    setTemplateNameErr(true);
+                    setTemplateNameErrMsg(errorMsg);
+                    throw new Error(errorMsg);
+                }
+                setTemplateNameErr(false);
+                setTemplateNameErrMsg("");
+                navigate("/templates", { state: { message: "Template saved successfully!" } });
+            })
+            .catch(error => console.error("Error saving template:", error));
+    };
 
 
     // table data
@@ -178,155 +448,6 @@ export default function TQB(){
     }, [targetDatabase]);
 
 
-    const [findOptions, setFindOptions] = useState({});
-
-    const [FRRules, setFRRules] = useState([]); // { find: string, replace: string }, holds find/replace rules
-    const [limitOffsetRules, setLimitOffsetRules] = useState([]); // { limit: number, offset: number }, holds limit/offset rule
-    const [columnNameChanges, setColumnNameChanges] = useState([]); // { original: string, new: string }, holds list of column name changes
-    
-    const [showColumnWindow, setShowColumnWindow] = useState(false);
-
-
-    
-
-
-        // Add a new empty fr rule
-    const addFRRule = () => {
-        setFRRules((prev) => [...prev, { find: "", replace: "" }]);
-    };
-
-    // Add limit/offset rule
-    const addLimitOffset = () => {
-        setLimitOffsetRules((prev) => [...prev, { limit: 1000, offset: 0 }]);
-    }
-
-    const handleFRRuleChange = (index, field, value) => {
-        setFRRules((prev) =>
-        prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
-        );
-        console.log('Updated FR rules:', FRRules);
-    }
-
-    const handleLimitOffsetChange = (index, field, value) => {
-        setLimitOffsetRules((prev) =>
-            prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
-        );
-    }
-
-    // make handler stable to avoid re-creating function every render
-    const handleColumnNameChange = useCallback((index, field, value) => {
-        setColumnNameChanges((prev) =>
-            prev.map((r, i) => (i === index ? { ...r, [field]: value } : r))
-        );
-    }, []);
-
-
-    // Remove find replace rule
-    const removeFRRule = (index) => {
-        setFRRules((prev) => prev.filter((_, i) => i !== index));
-    }
-
-    const removeLimitOffsetRule = (index) => {
-        setLimitOffsetRules((prev) => prev.filter((_, i) => i !== index));
-    }
-
-    // Remove column name change entry
-    const removeColumnChange = (index) => {
-        setColumnNameChanges((prev) => prev.filter((_, i) => i !== index));
-    }
-
-
-    async function populateFindOptions() {
-        try {
-            if(Object.keys(findOptions).length > 0) return findOptions; // already populated
-            toggleLoading(true);
-            const payload = {
-                name: selectedDatabase,
-                columns: selectedCols.length > 0 ? selectedCols : ['*'],
-                where: selectedWhere.length > 0 ? selectedWhere : [],
-                foreign_keys: foreignKeysSelection.length > 0 ? foreignKeysSelection : [],
-                limit: 10000, // limit to 10000 rows for performance
-            };
-
-            console.log('populateFindOptions payload', payload);
-
-            const response = await fetch(`${appAddress}/api/databases/external/tables/${encodeURIComponent(selectedTable)}`, {
-                method: 'POST', // POST with payload
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: "application/json",
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const text = await response.text().catch(() => null);
-                console.error('Failed to fetch find options', response.status, text);
-                return {};
-            }
-            const data = await response.json(); // expect an array of row objects
-
-            // Group values by column
-            const grouped = {};
-            data.rows.forEach (row => {
-                 Object.entries(row).forEach(([key, val]) => {
-                    if (!grouped[key]) {
-                        grouped[key] = new Set();
-                    }
-                    grouped[key].add(val);
-                });
-            });
-
-            // Convert sets to arrays
-            Object.keys(grouped).forEach(key => {
-                grouped[key] = Array.from(grouped[key]);   
-            });
-        
-            console.log('populateFindOptions grouped', grouped);
-            setFindOptions(grouped);
-            return grouped;
-        } catch (err) {
-            console.error('populateFindOptions error', err);
-            return {};
-        } finally { 
-            toggleLoading(false);
-        }
-    }
-
-
-
-    // available operators
-    const WHERE_OPERATORS = [
-      '=', '!=', '<', '<=', '>', '>=',
-      'LIKE', 'NOT LIKE', 'IN', 'NOT IN',
-      'IS NULL', 'IS NOT NULL'
-    ];
-
-    const toggle = (id) => {
-        setToggles((prev) => ({
-        ...prev,
-        [id]: !prev[id], // flip the bool for that id
-        }));
-    };
-
-    const isToggled = (id) => !!toggles[id]; // helper for readability\
-
-    function handleNewDatabase($database) {
-        if ($database !== "New Database") {
-            setSelectedDatabase($database);
-            setTableCols([]);
-            setTableData([]);
-            setSelectedCols([]);
-            setSelectedWhere([]);
-            setForeignKeysSelection([]);
-            setUpdatedData(false);
-            return;
-        }
-        setToggleNewDBModal(true);
-    
-    }
-
 
      useEffect(() => {
          if (token) {
@@ -336,76 +457,7 @@ export default function TQB(){
          handleMenuToggle();
      }, [token, appAddress]);
 
-    // manage FKSelection: { parentCol: string, fkTables: { tableName: string, fkColumns: [string] }[] }
-    function handleFKSelection(parentCol, tableName, fkColumn) {
-        
-
-        // handles the checkboxes for foreign key columns, but scoped to the parent FK (constraint)
-        setSelectedRFKs((prev) => {
-            const copy = { ...prev };
-            const list = Array.isArray(copy[parentCol]) ? [...copy[parentCol]] : [];
-            const idx = list.indexOf(fkColumn);
-            if (idx === -1) {
-                // add
-                list.push(fkColumn);
-            } else {
-                // remove
-                list.splice(idx, 1);
-            }
-            if (list.length) copy[parentCol] = list;
-            else delete copy[parentCol];
-            return copy;
-        });
-
-
-        setForeignKeysSelection((prev) => {
-            // deep-copy prev structure (shallow copies are enough for our nested arrays/objects)
-            const copy = prev.map(p => ({
-                parentCol: p.parentCol,
-                fkTables: p.fkTables.map(t => ({ tableName: t.tableName, fkColumns: [...t.fkColumns] }))
-            }));
-
-            const parentIdx = copy.findIndex(p => p.parentCol === parentCol);
-
-            if (parentIdx === -1) {
-                // parent entry doesn't exist -> create it with one table and one column
-                return [
-                    ...copy,
-                    { parentCol, fkTables: [{ tableName, fkColumns: [fkColumn] }] }
-                ];
-            }
-
-            const parent = copy[parentIdx];
-            const tableIdx = parent.fkTables.findIndex(t => t.tableName === tableName);
-
-            if (tableIdx === -1) {
-                // table entry doesn't exist -> add it with the column
-                parent.fkTables.push({ tableName, fkColumns: [fkColumn] });
-            } else {
-                const table = parent.fkTables[tableIdx];
-                const colIdx = table.fkColumns.indexOf(fkColumn);
-
-                if (colIdx === -1) {
-                    // add column
-                    table.fkColumns.push(fkColumn);
-                } else {
-                    // remove column
-                    table.fkColumns.splice(colIdx, 1);
-                    // if table has no columns left, remove the table entry
-                    if (table.fkColumns.length === 0) {
-                        parent.fkTables.splice(tableIdx, 1);
-                    }
-                }
-            }
-
-            // if parent has no fkTables left, remove the parent entry
-            if (parent.fkTables.length === 0) {
-                copy.splice(parentIdx, 1);
-            }
-            // console.log("copy", copy);
-            return copy;
-        });
-    }
+    
 
 
   // Fetch tables once when token is available
@@ -531,641 +583,80 @@ export default function TQB(){
        
 
 
-    //chganes selectedCols when a checkbox is checked or unchecked
-    const handleChange = (col) => {
-        setSelectedCols((prev) =>
-        prev.includes(col)
-            ? prev.filter((c) => c !== col) // remove if already selected
-            : [...prev, col] // add if not selected
-        );
-    };
-
-
-    // handle changes for the dynamic WHERE selects
-    // e: event, idx: index of the select being changed (the extra blank select has idx === current selectedWhere.length)
-    const handleSelectedWhere = (e, idx) => {
-        const val = e.target.value;
-        setSelectedWhere((prev = []) => {
-            const copy = [...prev];
-
-            // adding from the extra blank select
-            if (idx === copy.length) {
-                if (!val) return copy; // nothing chosen -> no change
-                // add new selected column with default operator and empty value
-                return [...copy, { column: val, operator: '=', value: '' }];
-            }
-
-            // updating an existing select's column
-            if (!val) {
-                // cleared the select -> remove it unless it's the only one
-                if (copy.length > 1) {
-                    copy.splice(idx, 1);
-                    return copy;
-                }
-                // last one cleared -> keep empty state
-                return [];
-            }
-
-            // replace column while keeping operator/value
-            copy[idx] = { ...(copy[idx] || {}), column: val, operator: copy[idx]?.operator ?? '=', value: copy[idx]?.value ?? '' };
-            return copy;
-        });
-    };
-
-    // change operator for a given where row
-    const handleWhereOperatorChange = (idx, operator) => {
-        setSelectedWhere((prev = []) => {
-            const copy = [...prev];
-            if (!copy[idx]) return copy;
-            copy[idx] = { ...copy[idx], operator };
-            // if operator is IS NULL / IS NOT NULL, clear value
-            if (operator === 'IS NULL' || operator === 'IS NOT NULL') {
-                copy[idx].value = '';
-            }
-            return copy;
-        });
-    };
-
-    // change input value for a given where row
-    const handleWhereValueChange = (idx, value) => {
-        setSelectedWhere((prev = []) => {
-            const copy = [...prev];
-            if (!copy[idx]) return copy;
-            copy[idx] = { ...copy[idx], value };
-            return copy;
-        });
-    };
-
-    const handleSaveTemplate = () => {        
-        // Save the template (you'll need to implement this)
-        console.log("Saving template:", templateName);
-        setTemplateNameErr(false);
-
-        let query = {};
-
-        if (Array.isArray(selectedCols) && selectedCols.length > 0) query.columns = selectedCols;
-
-        // Prefer the structured foreignKeysSelection if present. If it's empty but the
-        // checkbox-driven selectedRFKs has entries, derive the structured shape from
-        // the metadata in `foreignKeys` so the template save contains the FK info.
-        if (Array.isArray(foreignKeysSelection) && foreignKeysSelection.length > 0) {
-            query.foreign_keys = foreignKeysSelection;
-        } else if (selectedRFKs && Object.keys(selectedRFKs).length > 0) {
-            // Build an array like: [{ parentCol, fkTables: [{ tableName, fkColumns: [...] }] }, ...]
-            const derived = Object.keys(selectedRFKs).map((parentCol) => {
-                // Try to find metadata for this parent column
-                const fkMeta = Array.isArray(foreignKeys)
-                    ? foreignKeys.find(f => f.column_name === parentCol)
-                    : Object.values(foreignKeys || {}).find(f => f.column_name === parentCol);
-
-                const tableName = fkMeta?.referenced_table || null;
-                const fkCols = Array.isArray(selectedRFKs[parentCol]) ? selectedRFKs[parentCol] : [];
-
-                return {
-                    parentCol,
-                    fkTables: tableName ? [{ tableName, fkColumns: fkCols }] : []
-                };
-            }).filter(item => item.fkTables && item.fkTables.length > 0);
-
-            if (derived.length > 0) query.foreign_keys = derived;
-        }
-
-        if (Array.isArray(selectedWhere) && selectedWhere.length > 0) query.where = selectedWhere;
-        if (Object.keys(query).length === 0) {
-           query.columns = ["*"];
-       }
-
-        console.log(query);
-
-        let auto = {}
-        if (isAutomated) {
-            if( automationSchedule != 'every') {
-                auto = {
-                    schedule: automationSchedule,
-                    interval: null,
-                    unit: null
-                }
-            } else if (automationSchedule === 'every') {
-                auto = {
-                    schedule: automationSchedule,
-                    interval: automationPeriod,
-                    unit: automationUnit
-                }
-            }
-        } else {
-            auto = {
-                schedule: null,
-                interval: null,
-                unit: null
-            }
-        };
-        
-        let UI = {
-            toggles,
-            selectedRFKs
-        }
-
-        let eggsport = {
-            exportType: exportType,
-            targetDatabase: targetDatabase,
-            targetTable: targetTable,
-            findReplaceRules: FRRules,
-            limitOffsetRules: limitOffsetRules,
-            columnNameChanges: columnNameChanges
-        }
-
-        // Automation payload construction & validation (frontend-only logic)
-        let automation = { enabled: false };
-        if (isAutomated) {
-            if (automationSchedule === 'Every ...') {
-                const n = Number(automationPeriod);
-                if (!n || n <= 0) {
-                    showMessage('Please provide a positive number for automation interval.', false);
-                    return; // abort save
-                }
-                automation = { enabled: true, schedule: automationSchedule, interval: n, unit: automationUnit };
-            } else if (automationSchedule) {
-                automation = { enabled: true, schedule: automationSchedule };
-            } else {
-                // no schedule chosen
-                showMessage('Please choose an automation schedule or disable automation.', false);
-                return;
-            }
-        }
-
-        const payload = {
-            name: templateName,
-            database: selectedDatabase, 
-            table: selectedTable,
-            query: query,
-            export: eggsport,
-            automation: automation,
-            user_id: user.id,
-            auto: auto,
-            UI: UI
-        };
-        console.log("Payload for saving template:", payload);
-
-        fetch(`${appAddress}/api/query-templates`, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: 'application/json',
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(async response => {
-            const data = await response.json();
-            if (!response.ok) {
-                // Handle HTTP error responses
-                const errorMsg = data?.message || "An error occurred";
-                setTemplateNameErr(true);
-                setTemplateNameErrMsg(errorMsg);
-                throw new Error(errorMsg);
-            }
-            setTemplateNameErr(false);
-            setTemplateNameErrMsg("");
-            console.log("Template saved successfully:", data);
-            // Handle success (e.g., show a success message)
-            navigate("/templates", { state: { message: "Template saved successfully!" } });
-        })
-        .catch(error => {
-            console.error("Error saving template:", error);
-        });
-    }
-
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [menus, setMenus] = useState({});
-
-    // computed counts for columns and selected referenced FKs
-    const selectedColsCount = Array.isArray(selectedCols) ? selectedCols.length : 0;
-    // selectedRFKs is an object mapping parentCol -> [fkcol,...]
-    const selectedRFKsCount = selectedRFKs && typeof selectedRFKs === 'object'
-        ? Object.values(selectedRFKs).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0)
-        : 0;
-
-    // Automation state and logic
-    const [isAutomated, setIsAutomated] = useState(false);
-    const [automationSchedule, setAutomationSchedule] = useState('every'); // '', 'Every ...', 'Daily', 'Weekly', etc.
-    const [automationPeriod, setAutomationPeriod] = useState('5'); // number for custom interval when 'Every ...' chosen
-    const [automationUnit, setAutomationUnit] = useState('minutes'); // unit for custom interval
-
-    const handleAutomationToggle = (checked) => {
-        // Switch may pass checked boolean or no arg
-        const next = typeof checked === 'boolean' ? checked : !isAutomated;
-        setIsAutomated(next);
-        if (!next) {
-            // clearing schedule when disabled (frontend-only decision)
-            setAutomationSchedule('every');
-            setAutomationPeriod('5');
-            setAutomationUnit('minutes');
-        } else {
-            // provide a sensible default when enabling
-            setAutomationSchedule(prev => prev || 'Daily');
-        }
-    };
-
-    function handleMenuToggle() {
-        setIsMenuOpen(!isMenuOpen);
-    }
-
-
-    // toggles side menu submenus, closing others when one is opened
-    function toggleMenus(menuName) {
-        setMenus(prevState => {
-            const newState = {};
-            // Set all menus to false first
-            Object.keys(prevState).forEach(key => {
-                newState[key] = false;
-            });
-            // Then toggle the specific menu
-            newState[menuName] = !prevState[menuName];
-            return newState;
-        });
-    }
-
-    function resetRules(){
-            setSelectedCols([]);
-            setSelectedWhere([]);
-            setForeignKeysSelection([]);
-            setSelectedRFKs([]);
-            setRowLimit("");
-            setUpdatedData(false);
-        }
-
+    
     return (
        <>
         <h1 className="title">Table Query Builder </h1>
-        {/*Side menu with all the options, opens automatically upon page load*/}
-        <div className={`side-menu` + (isMenuOpen ? ' open' : '')}>
-            <div className="side-menu-header">
-                <span style={{opacity: (selectedTable && selectedDatabase && updatedData === true) ? 1 : 0}} className="attention">!</span>
-                <img src="/icons/refresh-page-option.png" alt="Refresh Preview Table" className="refresh-button" onClick={handleFetchTableData} style={{opacity: (selectedDatabase && selectedTable ? 1 : 0)}} />
-                <img src="/icons/gear.png" alt="Menu Icon" className="menu-icon" onClick={handleMenuToggle}/>
-            </div>
-            <div className="side-menu-content">                
-                <p className="error">{templateNameErrMsg}</p>
-                <span style={{display: "flex", justifyContent: "left", alignItems: "left", marginBottom: "10px"}}>
-                <input placeholder="Template name" style={{ borderColor: templateNameErr ? 'red' : 'initial' , width: '50%', marginRight: '10px' }} onBlur={(e) => setTemplateName(e.target.value)} />
-                <button onClick={handleSaveTemplate} className="save-template-button" style={{height: 'fit-content'}} disabled={!templateName || !selectedDatabase || !selectedTable}> Save </button>
-                </span>
-                <hr />
-                <div style={{width: "50%", margin: "auto auto 20px auto" }}>
-                    <label htmlFor="db">Select Database</label>
-                    <select id="db" value={selectedDatabase} onChange={(e) => handleNewDatabase(e.target.value)}>
-                        <option value="">Choose a database</option>
-                        {databases.map((db, index) => (
-                            // backend returns objects like { identifier , name } — support both shapes
-                            <option key={index} value={typeof db === 'string' ? db : ( db.name ?? JSON.stringify(db))}>
-                                {typeof db === 'string' ? db : (db.name ?? JSON.stringify(db))}
-                            </option>
-                        ))}
-                        <option value="New Database" style={{ fontWeight: "bold" }}>+New Database</option>
-                    </select>
 
-                    {Array.isArray(tables) && tables.length > 0 && (
-                        <>
-                            <label htmlFor="table-select">Select a table</label>
-                            <div style={{ marginTop: 8 }}>
-                                <Select
-                                    inputId="table-select"
-                                    placeholder="Choose a table"
-                                    isClearable
-                                    options={tables.map((t) => {
-                                        const tableName = typeof t === 'string' ? t : (t.name ?? t.table ?? Object.values(t)[0] ?? JSON.stringify(t));
-                                        return { value: tableName, label: tableName };
-                                    })} 
-                                    value={selectedTable ? { value: selectedTable, label: selectedTable } : null}
-                                    onChange={(opt) => {setSelectedTable(opt ? opt.value : '');}}
-                                    styles={{menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' }), width: "fit-content"   }}
-                                />
-                            </div>
-                        </>
-                    )}
-                </div>
-                {/*Rules once database and table are selected*/}
-                <div className={`rules-section` + (selectedTable ? ' open' : '')}>
-                    <hr />
-                    <div className="rules-header">
-                        <h3>Rules</h3> <Tippy content="Reset all rules"><img src = "icons/undo.png" alt="Reset Icon" className="reset-icon" onClick={() => {resetRules();}} /></Tippy>
-                        <input type="number" placeholder="Preview row limit" style={{width: "50%"}} value={rowLimit} onChange={(e) => setRowLimit(e.target.value)} />
-                    </div>
-                    <div className={`rule-item` + (menus["column-menu"] ? ' open' : '')} onClick={() => toggleMenus("column-menu")} >
-                        <label>
-                            Columns (
-                            { (selectedColsCount === 0 && selectedRFKsCount === 0) 
-                                ? 'All' 
-                                : (selectedColsCount === 0 && selectedRFKsCount > 0)
-                                    ? `All + ${selectedRFKsCount} fks`
-                                    : `${selectedColsCount} cols${selectedRFKsCount ? `, ${selectedRFKsCount} fks` : ''}`
-                            }
-                        )</label>
-                        <strong>{menus["column-menu"] ? "<" : ">"}</strong>
-                    </div>
-                    <div className={`rule-submenu` + (menus["column-menu"] ? ' open' : '')}>
-                            {/* List of columns with checkboxes */}
-                                    {Array.isArray(tableCols) && tableCols.map((col) => {
-                                        // Find the foreign key object for this column, if any
-                                        const fk = Object.values(foreignKeys).find(fk => fk.column_name === col);
-                                        return (
-                                            <div key={col} className="column-item">
-                                                <label>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedCols.includes(col)}
-                                                        onChange={() => handleChange(col)}
-                                                    />
-                                                    {col}
-                                                    {fk && (
-                                                        <label
-                                                            onClick={() => toggle(fk.constraint_name)}
-                                                            style={{ cursor: "pointer", marginLeft: "8px" }}
-                                                        >
-                                                        {isToggled(fk.constraint_name) ? "-" : "+"}
-                                                        </label>
-                                                    )}
-                                                </label>
-                                                {/* Show referenced table(s) if this column is a foreign key */}
-                                                {fk && isToggled(fk.constraint_name) && (
-                                                <div className="nested" style={{ marginLeft: "16px" }}>
-                                                    <label
-                                                        onClick={() => toggle(`${fk.constraint_name}-table`)}
-                                                    >
-                                                        <strong>{fk.referenced_table}</strong> {isToggled(`${fk.constraint_name}-table`) ? "-" : "+"}
-                                                    </label>
-                                                    {isToggled(`${fk.constraint_name}-table`) && (
-                                                        <div style={{ marginLeft: "16px" }}>
-                                                            {fk.referenced_table_columns.map((fkcol, i) =>
-                                                                fkcol === fk.referenced_column ? null : (
-                                                                    <div key={i} className="fk-details">
-                                                                        <label>
-                                                                            <input
-                                                                                type="checkbox"
-                                                                                checked={Array.isArray(selectedRFKs[fk.column_name]) && selectedRFKs[fk.column_name].includes(fkcol)}
-                                                                                onChange={() => handleFKSelection(fk.column_name, fk.referenced_table, fkcol)}
-                                                                            />
-                                                                            {fkcol}
-                                                                        </label>
-                                                                    </div>
-                                                                ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                    </div>
-
-                    <div className={`rule-item` + (menus["where-menu"] ? ' open' : '')} onClick={() => toggleMenus("where-menu")}>
-                        <label>Where Statements ({Array.isArray(selectedWhere) && selectedWhere.length > 0 ? selectedWhere.length : "none"})</label> <strong>{menus["where-menu"] ? "<" : ">"}</strong>
-                    </div>
-                    <div className={`rule-submenu` + (menus["where-menu"] ? ' open' : '')}>
-                        <div className="whereSection" id="whereSection">                        
-                                {(() => {
-                                    // include referenced FK columns as "referencedTable.column"
-                                    const fkList = Array.isArray(foreignKeys) ? foreignKeys : Object.values(foreignKeys || {});
-                                    const fkOptions = fkList.flatMap(fk =>
-                                        Array.isArray(fk.referenced_table_columns)
-                                            ? fk.referenced_table_columns
-                                                .filter(c => c !== fk.referenced_column) // keep same behavior if desired
-                                                .map(c => `${fk.referenced_table}.${c}`)
-                                            : []
-                                    );
-                                    // combine and dedupe
-                                    const combinedOptions = Array.from(new Set([...(Array.isArray(tableCols) ? tableCols : Object.keys(tableCols || {})), ...fkOptions]));
-                                    const optionsList = combinedOptions;
-                                    const selected = Array.isArray(selectedWhere) ? selectedWhere : [];
- 
-                                     return (
-                                         <>
-                                            {/* render selects for each current selection (selected is array of {column, operator, value}) */}
-                                            {selected.map((row, idx) => {
-                                                const currentCol = row?.column ?? '';
-                                                // show the current value even if it's excluded from the global selected list
-                                                const opts = optionsList.filter(o => o === currentCol || !selected.some(s => s.column === o));
-                                                 return (
-                                                    <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                                                        <select value={currentCol} onChange={(e) => handleSelectedWhere(e, idx)} >
-                                                            <option value="">-- Choose Column --</option>
-                                                            {opts.map((col) => <option key={col} value={col}>{col}</option>)}
-                                                        </select>
-
-                                                        {/* operator select - only show when a column is chosen */}
-                                                        {currentCol && (
-                                                            <select
-                                                                value={row.operator ?? '='}
-                                                                onChange={(e) => handleWhereOperatorChange(idx, e.target.value)}
-                                                            >
-                                                                {WHERE_OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
-                                                            </select>
-                                                        )}
-
-                                                        {/* value input - show when a column chosen and operator expects a value */}
-                                                        {currentCol && !(row.operator === 'IS NULL' || row.operator === 'IS NOT NULL') && (
-                                                            <input
-                                                                type="text"
-                                                                placeholder="value"
-                                                                value={row.value ?? ''}
-                                                                onChange={(e) => handleWhereValueChange(idx, e.target.value)}
-                                                            />
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-
-                                            {/* extra blank select to add another condition (excludes already chosen options) */}
-                                            <select key="extra" value="" className="blankSelect" onChange={(e) => handleSelectedWhere(e, selected.length)}>
-                                                <option value="" >-- Choose Column --</option>
-                                                {optionsList.filter(o => !selected.some(s => s.column === o)).map((col) => (
-                                                    <option key={col} value={col}>{col}</option>
-                                                ))}
-                                            </select>
-                                         </>
-                                     );
-                                 })()}
-                             </div>
-                    </div>
-                    <div className={`rule-item` + (menus["export-menu"] ? ' open' : '')} onClick={() => {toggleMenus("export-menu"); (async () => {
-                const grouped = await populateFindOptions();
-                setFindOptions(grouped || {});
-            })();}}>
-                        <label>Export</label> <strong>{menus["export-menu"] ? "<" : ">"}</strong>
-                    </div>
-                    <div className={`rule-submenu-export` + (menus["export-menu"] ? ' open' : '')}> {/* Special case for export menu as it needs more space */}
-                        <h3>Export Rules</h3>
-                                <Tippy
-                                    className='switch-warning'
-                                    visible={showWarning}
-                                    interactive={true}
-                                    placement="bottom"
-                                    delay={[100, 50]}
-                                    content={exportType ? (
-                                        <div>
-                                            Use this only when you know the target database structure.
-                                            <br />
-                                            <button onClick={() => setShowWarning(false)}>OK</button>
-                                            <button onClick={() => {setShowWarning(false); toggleExportType();}}>Cancel</button>
-                                        </div>
-                                    ) : ''}>
-                                <div>
-                                    <span className={!exportType ? 'active' : ''}> CSV </span>
-                                    <Switch
-                                        onChange={() => {
-                                            toggleExportType();
-                                            // show warning only when switching to DB mode
-                                            setShowWarning(!exportType);
-                                        }}
-                                        checked={exportType}
-                                        uncheckedIcon={false}
-                                        checkedIcon={false}
-                                        onColor="#888888"
-                                        onHandleColor="#ffffff"
-                                        handleDiameter={20}
-                                        height={10}
-                                        width={40}
-                                    />
-                                    <span className={exportType ? 'active' : ''}> DB </span>
-                                </div>
-
-
-                                {/* TODO FIX: when closing Change Column Names window, target db and table get reset, when they shouldn't */}
-                                </Tippy>
-                                {/* DB/Table selectors only in DB export mode */}
-                                        {exportType && (
-                                            <div style={{ marginTop: '0.5rem' }}>
-                                                <label>Target Database</label>  {!targetDatabase && <span className='attention'>!</span>}
-                                                <Select
-                                                    options={(databases || [])
-                                                        .filter(d => d.name !== selectedDatabase) // filters out the template database
-                                                        .map(d => ({ value: d.name ?? d, label: d.name ?? d }))}
-                                                    value={targetDatabase ? { value: targetDatabase, label: targetDatabase } : null}
-                                                    onChange={(opt) => { const val = opt ? opt.value : ''; setTargetDatabase(val); setTargetTable(''); ([]); }}
-                                                    styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
-                                                />
-                                                {targetDatabase && (
-                                                    <>
-                                                        <label>Target Table</label>  {!targetTable && <span className='attention'>!</span>}
-                                                        <Select
-                                                            options={(dbTables || []).map(t => ({ value: t, label: t }))}
-                                                            value={targetTable ? { value: targetTable, label: targetTable } : null}
-                                                            onChange={(opt) => {setTargetTable(opt ? opt.value : ''); }}
-                                                            styles={{ menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
-                                                        />
-                                                    </>
-                                                )}
-                                            </div>
-                                        )}
-                                <button className="add-rule-button" onClick={addFRRule}>Add New F&R Rule</button> <span/>
-                                <button className='add-rule-button' onClick={addLimitOffset} disabled={limitOffsetRules.length >= 1}>Add Limit/Offset</button> <span/>
-                                <button className='add-rule-button' onClick={() => { setShowColumnWindow(true); setColumnNameChanges(prev => [...prev, { original: '', new: '' }]) }} disabled={showColumnWindow}>Change Column Names</button> {!showColumnWindow && exportType && <span className='attention'>!</span>}
-
-                                {FRRules.map((rule, index) => (
-                                    <FRRuleField key={index} rule={rule} index={index} FRRules={FRRules} findOptions={findOptions} findOptionsLoading={loading} removeFRRule={removeFRRule} handleFRRuleChange={handleFRRuleChange} />
-                                ))}
-                                {limitOffsetRules.map((rule, index) => (
-                                    <LimitOffsetRuleField key={index} rule={rule} index={index} removeLimitOffsetRule={removeLimitOffsetRule} handleLimitOffsetChange={handleLimitOffsetChange} />
-                                ))}
-                                {/* Change Column Names window - only visible when opened */}
-                                {showColumnWindow && (
-                                    <div className="column-name-change-container">
-                                        <Tippy content={ exportType ? 
-                                            <span>It is recommended to use this as sometimes column names may not align perfectly with the target schema, causing data loss.</span>
-                                            : 
-                                            <span>This will rename columns in the exported CSV file.</span>}>
-                                            <span>ℹ️</span>
-                                        </Tippy>
-                                        <strong style={{ marginLeft: 6 }}>Change Column Names</strong>
-                                        <button onClick={() => {
-                                                // Close window and clear all column changes
-                                                setShowColumnWindow(false);
-                                                setColumnNameChanges([]);
-                                                setTargetDatabase('');
-                                                setTargetTable('');
-                                                setDbTables([]);
-                                            }} className='remove-rule-button'>✖</button>
-
-                                        
-
-                                        
-
-                                        <div style={{ marginTop: '0.75rem' }}>
-                                            {columnNameChanges.length === 0 && <div style={{ color: '#999' }}>No columns added yet.</div>}
-
-                                            {columnNameChanges.map((nameChange, index) => (
-                                                // show mapping rows only if CSV mode OR (DB mode + both DB & table selected)
-                                                ((!exportType) || (exportType && targetDatabase && targetTable)) && (
-                                                    <>
-                                                        <ColumnNameChange
-                                                            nameChange={nameChange}
-                                                            index={index}
-                                                            findOptions={findOptions}
-                                                            toggleLoading={toggleLoading}
-                                                            handleColumnNameChange={handleColumnNameChange}
-                                                            columnNameChanges={columnNameChanges}
-                                                            removeColumnChange={removeColumnChange}
-                                                            exportType={exportType}
-                                                            targetDatabase={targetDatabase}
-                                                            targetTable={targetTable}
-                                                        />
-                                                        <br />
-
-                                                        </>
-                                                        
-                                                )
-                                            ))}
-                                           {targetDatabase && targetTable || !exportType ? (
-                                               <button onClick={() => setColumnNameChanges(prev => [...prev, { original: '', new: '' }])}>Add Column</button>
-                                           ) : (
-                                               <div style={{ color: '#999' }}>Select a database and table to add columns.</div>
-                                           )}
-
-                                        </div>
-                                    </div>
-                                )}
-                    </div>
-                    <div className={`rule-item` + (menus["auto-menu"] ? ' open' : '')} onClick={() => toggleMenus("auto-menu")}>
-                        <label>Automation</label> <strong>{menus["auto-menu"] ? "<" : ">"}</strong>
-                    </div>
-                    <div className={`rule-submenu-auto` + (menus["auto-menu"] ? ' open' : '')}>
-                        <h3>Automate?</h3>
-                        <Switch checked={isAutomated} onChange={handleAutomationToggle} />
-                        <div className="automation-settings">
-                            {isAutomated && (
-                                <>
-                                    <label>
-                                        Automation Schedule:
-                                    </label>
-                                    <select value={automationSchedule} defaultValue={"every"} onChange={(e) => setAutomationSchedule(e.target.value)} disabled={!isAutomated}>
-                                        <option value="every">Every ...</option>
-                                        <option value="hourly">Hourly</option>
-                                        <option value="daily">Daily</option>
-                                        <option value="weekly">Weekly</option>
-                                        <option value="monthly">Monthly</option>
-                                        <option value="yearly">Yearly</option>
-                                    </select>
-                                    {automationSchedule === 'every' && isAutomated && (
-                                        <>
-                                            <input type="number" placeholder="Period"  value={automationPeriod} onChange={(e) => setAutomationPeriod(e.target.value)} />
-                                            <select defaultValue={"minutes"} value={automationUnit} onChange={(e) => setAutomationUnit(e.target.value)}>
-                                                <option value="minutes">minutes</option>
-                                                <option value="hours">hours</option>
-                                                <option value="days">days</option>
-                                                <option value="weeks">weeks</option>
-                                                <option value="months">months</option>
-                                                <option value="years">years</option>
-                                            </select>
-                                        </>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
+            <TemplateSideMenu
+                isMenuOpen={isMenuOpen}
+                selectedTable={selectedTable}
+                selectedDatabase={selectedDatabase}
+                updatedData={updatedData}
+                handleFetchTableData={handleFetchTableData}
+                handleMenuToggle={handleMenuToggle}
+                templateNameErrMsg={templateNameErrMsg}
+                templateNameErr={templateNameErr}
+                setTemplateName={setTemplateName}
+                templateName={templateName}
+                handleSaveTemplate={handleSaveTemplate}
+                databases={databases}
+                tables={tables}
+                setSelectedTable={setSelectedTable}
+                menus={menus}
+                toggleMenus={toggleMenus}
+                resetRules={resetRules}
+                rowLimit={rowLimit}
+                setRowLimit={setRowLimit}
+                tableCols={tableCols}
+                foreignKeys={foreignKeys}
+                selectedCols={selectedCols}
+                selectedRFKs={selectedRFKs}
+                selectedColsCount={selectedColsCount}
+                selectedRFKsCount={selectedRFKsCount}
+                handleChange={handleChange}
+                toggle={toggle}
+                isToggled={isToggled}
+                handleFKSelection={handleFKSelection}
+                selectedWhere={selectedWhere}
+                WHERE_OPERATORS={WHERE_OPERATORS}
+                handleSelectedWhere={handleSelectedWhere}
+                handleWhereOperatorChange={handleWhereOperatorChange}
+                handleWhereValueChange={handleWhereValueChange}
+                exportType={exportType}
+                toggleExportType={toggleExportType}
+                showWarning={showWarning}
+                setShowWarning={setShowWarning}
+                populateFindOptions={populateFindOptions}
+                loading={loading}
+                targetDatabase={targetDatabase}
+                setTargetDatabase={setTargetDatabase}
+                targetTable={targetTable}
+                setTargetTable={setTargetTable}
+                dbTables={dbTables}
+                addLimitOffset={addLimitOffset}
+                handleNewDatabase={handleNewDatabase}
+                showColumnWindow={showColumnWindow}
+                setShowColumnWindow={setShowColumnWindow}
+                setColumnNameChanges={setColumnNameChanges}
+                removeFRRule={removeFRRule}
+                handleFRRuleChange={handleFRRuleChange}
+                limitOffsetRules={limitOffsetRules}
+                removeLimitOffsetRule={removeLimitOffsetRule}
+                handleLimitOffsetChange={handleLimitOffsetChange}
+                columnNameChanges={columnNameChanges}
+                toggleLoading={toggleLoading}
+                handleColumnNameChange={handleColumnNameChange}
+                removeColumnChange={removeColumnChange}
+                isAutomated={isAutomated}
+                handleAutomationToggle={handleAutomationToggle}
+                automationSchedule={automationSchedule}
+                setAutomationSchedule={setAutomationSchedule}
+                automationPeriod={automationPeriod}
+                setAutomationPeriod={setAutomationPeriod}
+                automationUnit={automationUnit}
+                setAutomationUnit={setAutomationUnit}
+            />
             <div className={`main-div`}>
                 
                 {selectedTable && tableData.length > 0 ? (
