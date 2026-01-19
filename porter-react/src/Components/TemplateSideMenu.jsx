@@ -69,17 +69,20 @@ export default function TemplateSideMenu(props) {
         automationPeriod,
         setAutomationPeriod,
         automationUnit,
-        setAutomationUnit
+        setAutomationUnit,
+        FRRules,
+        limitOffsetRules, 
+        showColumnWindow,
+        setShowColumnWindow,
+        setFindOptions,
+        findOptions,
+        columnNameChanges,
+        setColumnNameChanges,
     } = props;
 
     
-        const [findOptions, setFindOptions] = useState({});
-    
-        const [FRRules, setFRRules] = useState([]); // { find: string, replace: string }, holds find/replace rules
-        const [limitOffsetRules, setLimitOffsetRules] = useState([]); // { limit: number, offset: number }, holds limit/offset rule
-        const [columnNameChanges, setColumnNameChanges] = useState([]); // { original: string, new: string }, holds list of column name changes
-        
-        const [showColumnWindow, setShowColumnWindow] = useState(false);
+    // All rule-related state and handlers are now controlled by parent (TQB) and passed as props.
+    // Remove local state for rules and UI toggles.
 
         
 
