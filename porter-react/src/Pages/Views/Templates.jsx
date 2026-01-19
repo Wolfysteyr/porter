@@ -55,6 +55,8 @@ export default function Templates() {
     const [editSelectedDatabase, setEditSelectedDatabase] = useState('');
     const [editTableCols, setEditTableCols] = useState([]);
     const [editForeignKeys, setEditForeignKeys] = useState([]); // same shape as TQB.jsx
+    const [editTableData, setEditTableData] = useState([]);
+    const [editShowSuccessGlow, setEditShowSuccessGlow] = useState(false);
     const [editRowLimit, setEditRowLimit] = useState(0);
     const [editSelectedCols, setEditSelectedCols] = useState([]);
     const [editSelectedWhere, setEditSelectedWhere] = useState([]);
@@ -170,6 +172,9 @@ export default function Templates() {
 
     // open edit modal and prefill all states from template payload
     async function openEditModal(template){
+
+        // set loading state while fetching data
+        setLoadingMessage("Loading template data... ")
         // base fields
         setEditTemplateId(template.id);
         setEditName(template.name ?? '');
@@ -210,6 +215,8 @@ export default function Templates() {
                         setEditTableCols(data.columns || []);
                         setEditForeignKeys(data.foreignKeys || []);
                     }
+                    // Fetch preview data for this template's table
+                    await handleFetchEditTableData(t, template.database ?? editSelectedDatabase);
                 } catch (err) {
                     console.error("failed to load columns for edit", err);
                 }
@@ -327,6 +334,43 @@ export default function Templates() {
         fetchCols();
         return () => { cancelled = true; }
     }, [editSelectedTable, token, editSelectedDatabase, appAddress]);
+
+    // Fetch preview data for the edit modal (modeled on TQB.jsx)
+    async function handleFetchEditTableData(tableName = editSelectedTable, dbName = editSelectedDatabase) {
+        if (!tableName) return;
+        try {
+            toggleLoading(true);
+            const payload = {};
+            if (dbName) payload.name = dbName;
+            if (editRowLimit && Number(editRowLimit) > 0) payload.limit = Number(editRowLimit);
+            if (Array.isArray(editSelectedCols) && editSelectedCols.length > 0) payload.columns = editSelectedCols;
+            if (Array.isArray(editFKSelection) && editFKSelection.length > 0) payload.foreign_keys = editFKSelection;
+            if (Array.isArray(editSelectedWhere) && editSelectedWhere.length > 0) payload.where = editSelectedWhere;
+
+            const resource = await fetch(`${appAddress}/api/databases/external/tables/${encodeURIComponent(tableName)}`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (!resource.ok) throw new Error(`Error ${resource.status}`);
+            const data = await resource.json();
+
+            setEditShowSuccessGlow(true);
+            setTimeout(() => setEditShowSuccessGlow(false), 2000);
+
+            const rows = Array.isArray(data) ? data : (data.rows ?? data.data ?? []);
+            setEditTableData(rows);
+        } catch (err) {
+            console.error('Failed to fetch edit preview data:', err);
+        } finally {
+            toggleLoading(false);
+        }
+    }
 
     // save edited template
     async function handleSaveEditedTemplate(){
@@ -560,257 +604,35 @@ export default function Templates() {
                 contentLabel="Edit Template"
                 className="edit-modal" 
                 overlayClassName="modal-overlay">
-                <div style={{ padding: '1rem', maxWidth: 900 }}>
-                    <h2>Edit Template</h2>
-                    <div style={{width: "60%", margin: "auto auto 20px auto" }}>
-                        <label>Template name</label>
-                        <input type="text" value={editName} onChange={e => setEditName(e.target.value)} />
-                    </div>
-
-                    <div style={{width: "60%", margin: "auto auto 20px auto" }}>
-                        <label htmlFor="db">Selected Database</label>
-                        <select name="db" id="db" disabled>
-                            <option value={editSelectedDatabase}>{editSelectedDatabase}</option>
-                        </select>
-                        <label htmlFor="table-select">Selected table</label>
-                        <Select
-                                    inputId="table-select"
-                                    placeholder="Choose a table"
-                                    isClearable
-                                    options={editTables.map((t) => {
-                                        const tableName = typeof t === 'string' ? t : (t.name ?? t.table ?? Object.values(t)[0] ?? JSON.stringify(t));
-                                        return { value: tableName, label: tableName };
-                                    })}
-                                    value={editSelectedTable ? { value: editSelectedTable, label: editSelectedTable } : null}
-                                    onChange={(opt) => setEditSelectedTable(opt ? opt.value : '')}
-                                    styles={{menu: (provided) => ({ ...provided, zIndex: 9999, backgroundColor: '#424242', color: '#fff' }), control: (provided) => ({ ...provided, margin: "1rem", backgroundColor: '#424242', color: '#fff' }), singleValue: (provided) => ({ ...provided, color: '#fff' })   }}
-                                />
-                    </div>
-
-                    <div className="filterDIV">
-                        {editTableCols.length > 0 && (
-                            <div className="filterDIVenabled">
-                                <button onClick={() => toggleEdit("column-checklist")}> {isEditToggled("column-checklist") ? "▲" : "▼"} Select columns</button> <br />
-                                {isEditToggled("column-checklist") && (
-                                    <div id="column-checklist" className="column-checklist">
-                                        {editTableCols.map((col) => {
-                                            // find foreign key for this column by matching column_name
-                                            const fk = Object.values(editForeignKeys).find(fk => fk.column_name === col);
-                                            return (
-                                                <div key={col} className="column-item">
-                                                    <label>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={editSelectedCols.includes(col)}
-                                                            onChange={() => handleEditChange(col)}
-                                                        />
-                                                        {col}
-                                                        {fk && (
-                                                            <label
-                                                                onClick={() => toggleEdit(fk.constraint_name)}
-                                                                style={{ cursor: "pointer", marginLeft: "8px" }}
-                                                            >
-                                                            {isEditToggled(fk.constraint_name) ? "-" : "+"}
-                                                            </label>
-                                                        )}
-                                                    </label>
-                                                    {fk && isEditToggled(fk.constraint_name) && (
-                                                        <div className="nested" style={{ marginLeft: "16px" }}>
-                                                            <label onClick={() => toggleEdit(`${fk.constraint_name}-table`)}>
-                                                                <strong>{fk.referenced_table}</strong> {isEditToggled(`${fk.constraint_name}-table`) ? "-" : "+"}
-                                                            </label>
-                                                            {isEditToggled(`${fk.constraint_name}-table`) && (
-                                                                <div style={{ marginLeft: "16px" }}>
-                                                                    {fk.referenced_table_columns.map((fkcol, i) =>
-                                                                        fkcol === fk.referenced_column ? null : (
-                                                                            <div key={i} className="fk-details">
-                                                                                <label>
-                                                                                    <input
-                                                                                        type="checkbox"
-                                                                                        checked={Array.isArray(editSelectedRFKs[fk.column_name]) && editSelectedRFKs[fk.column_name].includes(fkcol)}
-                                                                                        onChange={() => handleEditFKSelection(fk.column_name, fk.referenced_table, fkcol)}
-                                                                                    />
-                                                                                    {fkcol}
-                                                                                </label>
-                                                                            </div>
-                                                                        )) }
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                                <div className="whereSection" id="whereSection">
-                                    <h3>WHERE conditions</h3>
-                                    {(() => {
-                                        const fkList = Array.isArray(editForeignKeys) ? editForeignKeys : Object.values(editForeignKeys || {});
-                                        const fkOptions = fkList.flatMap(fk =>
-                                            Array.isArray(fk.referenced_table_columns)
-                                                ? fk.referenced_table_columns
-                                                    .filter(c => c !== fk.referenced_column)
-                                                    .map(c => `${fk.referenced_table}.${c}`)
-                                                : []
-                                        );
-                                        const combinedOptions = Array.from(new Set([...(Array.isArray(editTableCols) ? editTableCols : Object.keys(editTableCols || {})), ...fkOptions]));
-                                        const optionsList = combinedOptions;
-                                        const selected = Array.isArray(editSelectedWhere) ? editSelectedWhere : [];
-
-                                        return (
-                                            <>
-                                                {selected.map((row, idx) => {
-                                                    const currentCol = row?.column ?? '';
-                                                    const opts = optionsList.filter(o => o === currentCol || !selected.some(s => s.column === o));
-                                                    return (
-                                                        <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                                                            <select value={currentCol} onChange={(e) => handleEditSelectedWhere(e, idx)} >
-                                                                <option value="">-- Choose Column --</option>
-                                                                {opts.map((col) => <option key={col} value={col}>{col}</option>)}
-                                                            </select>
-                                                            {currentCol && (
-                                                                <select value={row.operator ?? '='} onChange={(e) => handleEditWhereOperatorChange(idx, e.target.value)}>
-                                                                    {WHERE_OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
-                                                                </select>
-                                                            )}
-                                                            {currentCol && !(row.operator === 'IS NULL' || row.operator === 'IS NOT NULL') && (
-                                                                <input type="text" placeholder="value" value={row.value ?? ''} onChange={(e) => handleEditWhereValueChange(idx, e.target.value)} />
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                                <select key="extra" value="" className="blankSelect" onChange={(e) => handleEditSelectedWhere(e, selected.length)}>
-                                                    <option value="" >-- Choose Column --</option>
-                                                    {optionsList.filter(o => !selected.some(s => s.column === o)).map((col) => (
-                                                        <option key={col} value={col}>{col}</option>
-                                                    ))}
-                                                </select>
-                                            </>
-                                        );
-                                    })()}
-                                </div>
-                                
-                                <hr />
-                                <h3>Export Rules</h3>
-                                <Tippy
-                                    className='switch-warning'
-                                    visible={showWarning}
-                                    interactive={true}
-                                    placement="bottom"
-                                    delay={[100, 50]}
-                                    content={exportType ? (
-                                        <div>
-                                            Use this only when you know the target database structure.
-                                            <br />
-                                            <button onClick={() => setShowWarning(false)}>OK</button>
-                                            <button onClick={() => { setShowWarning(false); setExportType(false); }}>Cancel</button>
-                                        </div>
-                                    ) : ''}>
-                                <div>
-                                    <span className={!exportType ? 'active' : ''}> CSV </span>
-                                    <Switch
-                                        onChange={() => { setExportType(prev => !prev); setColumnNameChanges([]); }}
-                                        checked={exportType}
-                                        uncheckedIcon={false}
-                                        checkedIcon={false}
-                                        onColor="#888888"
-                                        onHandleColor="#ffffff"
-                                        handleDiameter={20}
-                                        height={10}
-                                        width={40}
-                                    />
-                                    <span className={exportType ? 'active' : ''}> DB </span>
-                                </div>
-                                </Tippy>
-
-                                {exportType && (
-                                    <div style={{ marginTop: '0.5rem' }}>
-                                        <label>Target Database</label>
-                                        <select value={targetDatabase ?? ""} onChange={(e) => setTargetDatabase(e.target.value)}>
-                                            <option value="">-- Choose Database --</option>
-                                            {Array.from(new Set(templates.map(t => t.database).filter(Boolean))).map(db => (
-                                                <option key={db} value={db}>{db}</option>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h2>Edit Template{editName ? ` - ${editName}` : ''}</h2>
+                    <img src="/icons/refresh-page-option.png" alt="Refresh Preview" className="refresh-button" onClick={() => handleFetchEditTableData()} style={{ cursor: 'pointer' }} />
+                </div>
+                <div style={{ marginTop: '0.75rem' }}>
+                    {editSelectedTable && editTableData.length > 0 ? (
+                        <div className={`tableContainer ${editShowSuccessGlow ? 'successGlow' : ''}`}>
+                            <table border="1" cellPadding="5">
+                                <thead>
+                                    <tr>
+                                        {Object.keys(editTableData[0]).map((col, idx) => (
+                                            <th key={idx}>{col}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {editTableData.map((row, i) => (
+                                        <tr key={i}>
+                                            {Object.values(row).map((val, j) => (
+                                                <td key={j}>{String(val)}</td>
                                             ))}
-                                        </select>
-                                        {targetDatabase && (
-                                            <>
-                                                <label>Target Table</label>
-                                                <select value={targetTable ?? ""} onChange={(e) => setTargetTable(e.target.value)}>
-                                                    <option value="">-- Choose Table --</option>
-                                                    {(dbTables || []).map((t) => <option key={t} value={t}>{t}</option>)}
-                                                </select>
-                                            </>
-                                        )}
-                                    </div>
-                                )}
-
-                                <div style={{ marginTop: '0.5rem' }}>
-                                    <button className="add-rule-button" onClick={addFRRule}>Add New F&R Rule</button> <span/>
-                                    <button className='add-rule-button' onClick={addLimitOffset} disabled={limitOffsetRules.length >= 1}>Add Limit/Offset</button> <span/>
-                                    <button className='add-rule-button' onClick={() => setShowColumnWindow(prev => !prev)} disabled={showColumnWindow}>Change Column Names</button> { !showColumnWindow && exportType && <span className='attention'>!</span> }
-                                </div>
-
-                                {FRRules.map((rule, index) => (
-                                    <FRRuleField key={index} rule={rule} index={index} FRRules={FRRules} findOptions={findOptions} findOptionsLoading={loading} removeFRRule={removeFRRule} handleFRRuleChange={handleFRRuleChange} />
-                                ))}
-                                {limitOffsetRules.map((rule, index) => (
-                                    <LimitOffsetRuleField key={index} rule={rule} index={index} removeLimitOffsetRule={removeLimitOffsetRule} handleLimitOffsetChange={handleLimitOffsetChange} />
-                                ))}
-
-                                {showColumnWindow && (
-                                    <div className="column-name-change-container">
-                                        <Tippy content={ exportType ? 
-                                            <span>It is recommended to use this as sometimes column names may not align perfectly with the target schema, causing data loss.</span>
-                                            : 
-                                            <span>This will rename columns in the exported CSV file.</span>}>
-                                            <span>ℹ️</span>
-                                        </Tippy>
-                                        <strong style={{ marginLeft: 6 }}>Change Column Names</strong>
-                                        <button onClick={() => setShowColumnWindow(false)} className='remove-rule-button'>✖</button>
-                                        <div style={{ marginTop: '0.75rem' }}>
-                                            {columnNameChanges.length === 0 && <div style={{ color: '#999' }}>No columns added yet.</div>}
-
-                                            {columnNameChanges.map((nameChange, index) => (
-                                                ((!exportType) || (exportType && targetDatabase && targetTable)) && (
-                                                    <>
-                                                        <ColumnNameChange
-                                                            nameChange={nameChange}
-                                                            index={index}
-                                                            findOptions={findOptions}
-                                                            toggleLoading={toggleLoading}
-                                                            handleColumnNameChange={handleColumnNameChange}
-                                                            columnNameChanges={columnNameChanges}
-                                                            removeColumnChange={(i) => setColumnNameChanges(prev => prev.filter((_, idx) => idx !== i))}
-                                                            exportType={exportType}
-                                                            targetDatabase={targetDatabase}
-                                                            targetTable={targetTable}
-                                                        />
-                                                        <br />
-                                                    </>
-                                                )
-                                            ))}
-                                           {targetDatabase && targetTable || !exportType ? (
-                                               <button onClick={() => setColumnNameChanges(prev => [...prev, { original: '', new: '' }])}>Add Column</button>
-                                           ) : (
-                                               <div style={{ color: '#999' }}>Select a database and table to add columns.</div>
-                                           )}
-
-                                        </div>
-                                    </div>
-                                )}
-
-                                <br /><br />
-                                <label>Row limit</label>
-                                <input type="number" value={editRowLimit} onChange={(e) => setEditRowLimit(e.target.value)} style={{fontSize:"20px"}}/> <br />
-                                <br />
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    <button onClick={handleSaveEditedTemplate} className="edit-button">Save changes</button>
-                                    <button onClick={closeEditModal} className="delete-button">Cancel</button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <p style={{ color: '#999' }}>{editSelectedTable ? 'No preview rows returned.' : 'No table selected for preview.'}</p>
+                    )}
                 </div>
             </Modal>
             {/* end edit modal */}
@@ -823,7 +645,7 @@ export default function Templates() {
                 overlayClassName={"modal-overlay"}
                 className={"loading-modal"}
             >
-                <p>{loadingMessage || "Processing export, please wait..."}</p>
+                <p>{loadingMessage || "Loading, please wait..."}</p>
                 <div className="loader"></div>
             </Modal>
         </>
