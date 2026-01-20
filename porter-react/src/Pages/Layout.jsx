@@ -47,8 +47,8 @@ export default function Layout(){
                     <Link to="/" className="nav-link">Home</Link>
                     {user && 
                     <>
-                         <Link to="/tqb" className="nav-link">Table Query Builder</Link>
-                    <Link to="/templates" className="nav-link">Templates</Link>
+                        <Link to="/tqb" className="nav-link">Table Query Builder</Link>
+                        <Link to="/templates" className="nav-link">Templates</Link>
                     </>
                     }
                     </div>

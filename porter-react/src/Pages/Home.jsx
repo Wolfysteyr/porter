@@ -7,7 +7,7 @@ import { useEffect } from "react"
 export default function Home(){
 
     const navigate = useNavigate();
-    const {token, user} = useContext(AppContext);
+    const {user} = useContext(AppContext);
 
     useEffect(() => {
             document.title = 'Porter';
@@ -25,7 +25,7 @@ export default function Home(){
                     <button onClick={() => navigate('/tqb')}>Table Query Builder</button> <br /> <br />
                     <button onClick={() => navigate('/templates')}> Query Templates</button> <br /> <br />
                     <button onClick={() => navigate('/automations')}> Automations [WIP]</button>   <br /> <br />
-                    <button onClick={() => navigate('/databases')}> Databases</button>   <br /> <br />
+                    {user.admin ? <><button onClick={() => navigate('/databases')}> Databases</button>   <br /> <br /></> : null}
                 </div>
             ) : 
                 <h2 className="title">Please log in to continue.</h2>

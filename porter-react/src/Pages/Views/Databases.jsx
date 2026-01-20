@@ -1,10 +1,9 @@
-import React, { useContext, useEffect, useState } from 'react';
-import Modal from 'react-modal';
-import { AppContext } from '../../Context/AppContext';
+import React, { useContext, useEffect, useState } from "react";
+import Modal from "react-modal";
+import { AppContext } from "../../Context/AppContext";
+Modal.setAppElement("#root");
 
-Modal.setAppElement('#root');
-
-export default function Databases(){
+export default function Databases() {
     const { appAddress, token } = useContext(AppContext);
 
     const [databases, setDatabases] = useState([]);
@@ -16,154 +15,177 @@ export default function Databases(){
     // Edit modal state
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editId, setEditId] = useState(null);
-    const [editName, setEditName] = useState('');
-    const [editDatabase, setEditDatabase] = useState('');
-    const [editDriver, setEditDriver] = useState('mysql');
-    const [editHost, setEditHost] = useState('');
-    const [editPort, setEditPort] = useState('3306');
-    const [editUsername, setEditUsername] = useState('');
-    const [editPassword, setEditPassword] = useState('');
-    const [editDescription, setEditDescription] = useState('');
+    const [editName, setEditName] = useState("");
+    const [editDatabase, setEditDatabase] = useState("");
+    const [editDriver, setEditDriver] = useState("mysql");
+    const [editHost, setEditHost] = useState("localhost");
+    const [editPort, setEditPort] = useState("3306");
+    const [editUsername, setEditUsername] = useState("");
+    const [editPassword, setEditPassword] = useState("");
+    const [editDescription, setEditDescription] = useState("");
 
     // Message modal
     const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
-    const [message, setMessage] = useState('');
+    const [message, setMessage] = useState("");
     const [messageSuccess, setMessageSuccess] = useState(true);
 
-    const fetchDatabasesCb = React.useCallback(async function fetchDatabases(){
-        if (!token) return;
-        try {
-            const res = await fetch(`${appAddress}/api/databases/external`, {
-                method: 'GET',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: 'application/json'
+    // Loading modal state
+    const [loading, toggleLoading] = useState(true);
+    const [loadingMessage, setLoadingMessage] = useState("");
+    
+
+
+
+    // Fetch databases
+
+    const fetchDatabasesCb = React.useCallback(
+        async function fetchDatabases() {
+            if (!token) return;
+            try {
+                const res = await fetch(
+                    `${appAddress}/api/databases/external`,
+                    {
+                        method: "GET",
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                            Accept: "application/json",
+                        },
+                    },
+                );
+                if (!res.ok) {
+                    const txt = await res.text();
+                    throw new Error(txt || `Status ${res.status}`);
                 }
-            });
-            if (!res.ok) {
-                const txt = await res.text();
-                throw new Error(txt || `Status ${res.status}`);
+                const data = await res.json();
+                setDatabases(Array.isArray(data) ? data : (data.data ?? []));
+            } catch (err) {
+                console.error("fetchDatabases err", err);
+            } finally {
+                toggleLoading(false);
             }
-            const data = await res.json();
-            setDatabases(Array.isArray(data) ? data : (data.data ?? []));
-        } catch (err) {
-            console.error('fetchDatabases err', err);
-        }
-    }, [appAddress, token]);
+        },
+        [appAddress, token],
+    );
 
     useEffect(() => {
         fetchDatabasesCb();
-        document.title = 'Porter - Databases';
+        document.title = "Porter - Databases";
     }, [fetchDatabasesCb]);
 
     // Create-modal state + new DB fields
     const [toggleNewDBModal, setToggleNewDBModal] = useState(false);
-    const [newDBName, setNewDBName] = useState('');
-    const [newDBDescription, setNewDBDescription] = useState('');
-    const [newDBDriver, setNewDBDriver] = useState('mysql');
-    const [newDBHost, setNewDBHost] = useState('');
-    const [newDBPort, setNewDBPort] = useState('3306');
-    const [newDBUsername, setNewDBUsername] = useState('');
-    const [newDBPassword, setNewDBPassword] = useState('');
+    const [newDBName, setNewDBName] = useState("");
+    const [newDBDescription, setNewDBDescription] = useState("");
+    const [newDBDriver, setNewDBDriver] = useState("mysql");
+    const [newDBHost, setNewDBHost] = useState("");
+    const [newDBPort, setNewDBPort] = useState("3306");
+    const [newDBUsername, setNewDBUsername] = useState("");
+    const [newDBPassword, setNewDBPassword] = useState("");
 
-    function openCreateModal(){ setToggleNewDBModal(true); }
+    function openCreateModal() {
+        setToggleNewDBModal(true);
+    }
 
-    async function handleCreateNewDatabase(){
+    async function handleCreateNewDatabase() {
         if (!token) return;
         const payload = {
             name: newDBName,
-            description: newDBDescription,
-            driver: newDBDriver,
-            host: newDBHost,
-            port: newDBPort,
-            username: newDBUsername,
-            password: newDBPassword,
+            description: newDBDescription || "",
+            driver: newDBDriver || "mysql",
+            host: newDBHost || "localhost",
+            port: newDBPort || "3306",
+            username: newDBUsername || "",
+            password: newDBPassword || "",
         };
         try {
             const res = await fetch(`${appAddress}/api/databases/external`, {
-                method: 'POST',
+                method: "POST",
                 headers: {
                     Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json'
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
                 },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
             });
             const data = await res.json();
             if (!res.ok) {
-                const err = data?.error || data?.message || 'Failed to create database';
+                const err =
+                    data?.error || data?.message || "Failed to create database";
                 throw new Error(err);
             }
-            openMessageModal('Database created', true);
+            openMessageModal("Database created", true);
             setToggleNewDBModal(false);
             // refresh list
             fetchDatabasesCb();
         } catch (err) {
-            console.error('create db err', err);
-            openMessageModal(err.message || 'Failed to create database', false);
+            console.error("create db err", err);
+            openMessageModal(err.message || "Failed to create database", false);
         }
     }
 
-    function openMessageModal(msg, success = true){
+    function openMessageModal(msg, success = true) {
         setMessage(msg);
         setMessageSuccess(success);
         setIsMessageModalOpen(true);
         setTimeout(() => setIsMessageModalOpen(false), 3000);
     }
 
-    function openDeleteModal(db){
+    function openDeleteModal(db) {
         setDbToDelete(db);
         setIsDeleteModalOpen(true);
     }
 
-    function closeDeleteModal(){
+    function closeDeleteModal() {
         setDbToDelete(null);
         setIsDeleteModalOpen(false);
     }
 
-    async function confirmDelete(){
+    async function confirmDelete() {
         if (!dbToDelete || !token) return;
         try {
-            const res = await fetch(`${appAddress}/api/databases/external/${dbToDelete.id}`, {
-                method: 'DELETE',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: 'application/json'
-                }
-            });
+            const res = await fetch(
+                `${appAddress}/api/databases/external/${dbToDelete.id}`,
+                {
+                    method: "DELETE",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        Accept: "application/json",
+                    },
+                },
+            );
             if (!res.ok) {
                 const txt = await res.text();
                 throw new Error(txt || `Status ${res.status}`);
             }
-            openMessageModal('Database deleted', true);
+            openMessageModal("Database deleted", true);
             closeDeleteModal();
             fetchDatabasesCb();
         } catch (err) {
-            console.error('delete err', err);
-            openMessageModal('Failed to delete database', false);
+            console.error("delete err", err);
+            openMessageModal("Failed to delete database", false);
         }
     }
 
-    function openEditModal(db){
+    function openEditModal(db) {
         setEditId(db.id);
-        setEditName(db.name ?? '');
+        setEditName(db.name ?? "");
         // The model stores database name in 'database' or 'name' depending on convention
-        setEditDatabase(db.database ?? db.name ?? '');
-        setEditDriver(db.driver ?? 'mysql');
-        setEditHost(db.host ?? '');
-        setEditPort(db.port ?? '3306');
-        setEditUsername(db.username ?? '');
-        setEditPassword(db.password ?? '');
-        setEditDescription(db.description ?? '');
+        setEditDatabase(db.database ?? db.name ?? "");
+        setEditDriver(db.driver ?? "mysql");
+        setEditHost(db.host ?? "localhost");
+        setEditPort(db.port ?? "3306");
+        setEditUsername(db.username ?? "");
+        setEditPassword(db.password ?? "");
+        setEditDescription(db.description ?? "");
         setIsEditModalOpen(true);
     }
 
-    function closeEditModal(){
+    function closeEditModal() {
         setIsEditModalOpen(false);
         setEditId(null);
     }
 
-    async function handleSaveEditedDb(){
+    async function handleSaveEditedDb() {
         if (!editId || !token) return;
         const payload = {
             name: editName,
@@ -175,26 +197,48 @@ export default function Databases(){
             password: editPassword,
         };
         try {
-            const res = await fetch(`${appAddress}/api/databases/external/${editId}`, {
-                method: 'PUT',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json'
+            const res = await fetch(
+                `${appAddress}/api/databases/external/${editId}`,
+                {
+                    method: "PUT",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                    },
+                    body: JSON.stringify(payload),
                 },
-                body: JSON.stringify(payload)
-            });
+            );
             const data = await res.json();
             if (!res.ok) {
-                const errMsg = data?.error || data?.message || 'Failed to save';
+                const errMsg = data?.error || data?.message || "Failed to save";
                 throw new Error(errMsg);
             }
-            openMessageModal('Saved changes', true);
+            openMessageModal("Saved changes", true);
             closeEditModal();
             fetchDatabasesCb();
         } catch (err) {
-            console.error('saveEditedDb err', err);
-            openMessageModal(err.message || 'Failed to save changes', false);
+            console.error("saveEditedDb err", err);
+            openMessageModal(err.message || "Failed to save changes", false);
+        }
+    }
+
+    function handleDBImage(driver) {
+        switch (driver) {
+            case "mysql":
+                return "/public/db_images/mysql.png";
+            case "postgresql":
+                return "/public/db_images/postgresql.png";
+            case "sqlite":
+                return "/public/db_images/sqlite.png";
+            case "sqlsrv":
+                return "/public/db_images/sqlserver.png";
+            case "mariadb":
+                return "/public/db_images/mariadb.png";
+            case "oracle":
+                return "/public/db_images/oracle.png";
+            default:
+                return "/public/db_images/mysql.png";
         }
     }
 
@@ -202,68 +246,68 @@ export default function Databases(){
         <>
             <div className="title-row">
                 <h1 className="title">External Databases</h1>
-                <button onClick={openCreateModal} className="create-button"><strong>+</strong> New</button>
+                <button onClick={openCreateModal} className="create-button">
+                    <strong>+</strong> New
+                </button>
             </div>
             <div className="main-div">
                 {databases.length === 0 ? (
                     <p>No external databases configured.</p>
                 ) : (
-                    <ul className="template-list">
-                        <li
-                            className="template-item template-header"
-                            key="header"
-                            style={{
-                                fontWeight: 700,
-                                background: "transparent",
-                                border: "none",
-                                cursor: "default",
-                                maxHeight: "none",
-                            }}
-                        >
-                            <span className="template-db">Database</span>
-                            <span className="template-description">
-                                Description
-                            </span>
-                            <span className="template-table">Driver</span>
-                            <span className="template-created-at">Host</span>
-                            <span className="template-updated-at">Port</span>
-                            <span className="template-actions">Actions</span>
-                        </li>
-                        {databases.map((db) => (
-                            <li className="database-item" key={db.id}>
-                                <span className="template-db">{db.name}</span>
-                                <span className="template-description">
-                                    {db.description ?? ""}
-                                </span>
-                                <span className="template-table">
-                                    {db.driver}
-                                </span>
-                                <span className="template-created-at">
-                                    {db.host}
-                                </span>
-                                <span className="template-updated-at">
-                                    {db.port}
-                                </span>
-                                <div className="template-actions">
-                                    <button
-                                        onClick={() => openEditModal(db)}
-                                        title="Click to edit"
-                                        className="edit-button"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={() => openDeleteModal(db)}
-                                        title="Click to delete"
-                                        className="delete-button"
-                                    >
-                                        Delete
-                                    </button>
+                    <>
+                        <div className="db-grid">
+                            {databases.map((db) => (
+                                <div key={db.id} className="db-card">
+                                    <div className="card-buttons">
+                                        <button
+                                            onClick={() => openEditModal(db)}
+                                            className="edit-button"
+                                            title="Edit Database"
+                                        >
+                                            <img
+                                                src="/public/icons/pencil.png"
+                                                alt="Edit"
+                                                style={{ maxWidth: "20px" }}
+                                            />
+                                        </button>
+                                        <button
+                                            onClick={() => openDeleteModal(db)}
+                                            className="delete-button"
+                                            title="Delete Database"
+                                        >
+                                            <img
+                                                src="/public/icons/close.png"
+                                                alt="Delete"
+                                                style={{ maxWidth: "20px" }}
+                                            />
+                                        </button>
+                                    </div>
+                                    <hr />
+                                    <div className="db-img">
+                                        <img
+                                            src={handleDBImage(db.driver)}
+                                            alt={db.driver}
+                                            style={{
+                                                maxWidth: "200px",
+                                                minWidth: "50px",
+                                            }}
+                                        />
+                                    </div>
+                                    <hr />
+
+                                    <div className="db-info">
+                                        <span>
+                                            <h2>{db.name}</h2>
+                                        </span>
+                                        <p>{db.description}</p>
+                                        <strong>
+                                            {db.host} : {db.port}
+                                        </strong>
+                                    </div>
                                 </div>
-                            </li>
-                        ))}
-                        
-                    </ul>
+                            ))}
+                        </div>
+                    </>
                 )}
             </div>
 
@@ -326,7 +370,7 @@ export default function Databases(){
                 />
                 <input
                     type="text"
-                    placeholder="Username (default: root)"
+                    placeholder="Username"
                     onChange={(e) => setNewDBUsername(e.target.value)}
                 />
                 <input
@@ -393,104 +437,86 @@ export default function Databases(){
                 isOpen={isEditModalOpen}
                 onRequestClose={closeEditModal}
                 contentLabel="Edit Database"
-                className="edit-modal"
+                className="newDB-modal"
                 overlayClassName="modal-overlay"
             >
-                <div style={{ padding: "1rem", maxWidth: 700 }}>
-                    <h2>Edit External Database</h2>
-                    <div
-                        style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr 1fr",
-                            gap: 12,
-                        }}
+                <h2>Edit database</h2>
+                <input
+                    type="text"
+                    placeholder="Database Name"
+                    value={editDatabase}
+                    onChange={(e) => setEditDatabase(e.target.value)}
+                />
+                <input
+                    type="text"
+                    placeholder="Description"
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                />{" "}
+                {/* custom description to help identify the database */}
+                <select
+                    name="driver"
+                    id="driver"
+                    value={editDriver}
+                    onChange={(e) => setEditDriver(e.target.value)}
+                >
+                    <option value="mysql">MySQL</option>
+                    <option value="pgsql">PostgreSQL</option>
+                    <option value="mariadb">MariaDB</option>
+                    <option value="sqlsrv">SQL Server</option>
+                    <option value="sqlite">SQLite</option>
+                    <option value="oracle">Oracle</option>
+                </select>
+                <input
+                    type="text"
+                    placeholder="Host (default: localhost)"
+                    value={editHost}
+                    onChange={(e) => setEditHost(e.target.value)}
+                />
+                <input
+                    type="text"
+                    placeholder="Port (default: 3306)"
+                    value={editPort}
+                    onChange={(e) => setEditPort(e.target.value)}
+                />
+                <input
+                    type="text"
+                    placeholder="Username"
+                    value={editUsername}
+                    onChange={(e) => setEditUsername(e.target.value)}
+                />
+                <input
+                    type="password"
+                    placeholder="Password"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                />
+                <br />
+                <button
+                    className="use-button"
+                    onClick={() => {
+                        handleSaveEditedDb();
+                    }}
+                >
+                    Create
+                </button>
+                <button
+                    className="delete-button"
+                    onClick={() => closeEditModal()}
+                >
+                    Cancel
+                </button>
+            </Modal>
+
+            {/* Loading modal */}
+            <Modal
+                        isOpen={loading}
+                        contentLabel="Loading"
+                        overlayClassName={"modal-overlay"}
+                        className={"loading-modal"}
                     >
-                        <label>
-                            Database
-                            <input
-                                type="text"
-                                value={editDatabase}
-                                onChange={(e) =>
-                                    setEditDatabase(e.target.value)
-                                }
-                            />
-                        </label>
-                        <label>
-                            Description
-                            <input
-                                type="text"
-                                value={editDescription}
-                                onChange={(e) =>
-                                    setEditDescription(e.target.value)
-                                }
-                            />
-                        </label>
-                        <label>
-                            Driver
-                            <select
-                                value={editDriver}
-                                onChange={(e) => setEditDriver(e.target.value)}
-                            >
-                                <option value="mysql">mysql</option>
-                                <option value="pgsql">pgsql</option>
-                                <option value="sqlsrv">sqlsrv</option>
-                                <option value="sqlite">sqlite</option>
-                                <option value="mariadb">mariadb</option>
-                                <option value="oracle">oracle</option>
-                            </select>
-                        </label>
-                        <label>
-                            Host
-                            <input
-                                type="text"
-                                value={editHost}
-                                onChange={(e) => setEditHost(e.target.value)}
-                            />
-                        </label>
-                        <label>
-                            Port
-                            <input
-                                type="text"
-                                value={editPort}
-                                onChange={(e) => setEditPort(e.target.value)}
-                            />
-                        </label>
-                        <label>
-                            Username
-                            <input
-                                type="text"
-                                value={editUsername}
-                                onChange={(e) =>
-                                    setEditUsername(e.target.value)
-                                }
-                            />
-                        </label>
-                        <label>
-                            Password
-                            <input
-                                type="password"
-                                value={editPassword}
-                                onChange={(e) =>
-                                    setEditPassword(e.target.value)
-                                }
-                            />
-                        </label>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                        <button
-                            onClick={handleSaveEditedDb}
-                            className="edit-button"
-                        >
-                            Save changes
-                        </button>
-                        <button
-                            onClick={closeEditModal}
-                            className="delete-button"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </div>
+                        <p>{loadingMessage || "Loading, please wait..."}</p>
+                        <div className="loader"></div>
             </Modal>
         </>
     );
