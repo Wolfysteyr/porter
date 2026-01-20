@@ -34,7 +34,7 @@ export default function TemplateSideMenu(props) {
         selectedColsCount,
         selectedRFKsCount,
         handleChange,
-        toggle,
+        toggleUI,
         isToggled,
         handleFKSelection,
         selectedWhere,
@@ -78,6 +78,7 @@ export default function TemplateSideMenu(props) {
         findOptions,
         columnNameChanges,
         setColumnNameChanges,
+        isEditing,
     } = props;
 
     
@@ -97,13 +98,13 @@ export default function TemplateSideMenu(props) {
                 <div className="side-menu-content">
                     <p className="error">{templateNameErrMsg}</p>
                     <span style={{ display: "flex", justifyContent: "left", alignItems: "left", marginBottom: "10px" }}>
-                        <input placeholder="Template name" style={{ borderColor: templateNameErr ? 'red' : 'initial', width: '50%', marginRight: '10px' }} onBlur={(e) => setTemplateName && setTemplateName(e.target.value)} />
-                        <button onClick={handleSaveTemplate} className="save-template-button" style={{ height: 'fit-content' }} disabled={!templateName || !selectedDatabase || !selectedTable}> Save </button>
+                        <input placeholder="Template name" value={templateName} style={{ borderColor: templateNameErr ? 'red' : 'initial', width: '50%', marginRight: '10px' }} onChange={(e) => setTemplateName && setTemplateName(e.target.value)} />
+                        <button onClick={handleSaveTemplate} className="save-template-button" style={{ height: 'fit-content' }} disabled={!templateName || !selectedDatabase || !selectedTable}> {isEditing ? "Save Changes" : "Save"} </button>
                     </span>
                     <hr />
                     <div style={{ width: "50%", margin: "auto auto 20px auto" }}>
                         <label htmlFor="db">Select Database</label>
-                        <select id="db" value={selectedDatabase} onChange={(e) => handleNewDatabase && handleNewDatabase(e.target.value)}>
+                        <select id="db" value={selectedDatabase} onChange={(e) => handleNewDatabase && handleNewDatabase(e.target.value)} disabled={isEditing}>
                             <option value="">Choose a database</option>
                             {databases && databases.map((db, index) => (
                                 <option key={index} value={typeof db === 'string' ? db : (db.name ?? JSON.stringify(db))}>
@@ -139,7 +140,7 @@ export default function TemplateSideMenu(props) {
                             <h3>Rules</h3> <Tippy content="Reset all rules"><img src="icons/undo.png" alt="Reset Icon" className="reset-icon" onClick={() => { resetRules && resetRules(); }} /></Tippy>
                             <input type="number" placeholder="Preview row limit" style={{ width: "50%" }} value={rowLimit} onChange={(e) => setRowLimit && setRowLimit(e.target.value)} />
                         </div>
-                        <div className={`rule-item` + (menus && menus["column-menu"] ? ' open' : '')} onClick={() => toggleMenus && toggleMenus("column-menu")} >
+                        <div className={`rule-item` + (menus && menus["column-menu"] ? ' open' : '')} onClick={() => toggleMenus && toggleMenus("column-menu")}>
                             <label>
                                 Columns (
                                 {(selectedColsCount === 0 && selectedRFKsCount === 0)
@@ -159,13 +160,13 @@ export default function TemplateSideMenu(props) {
                                         <label>
                                             <input
                                                 type="checkbox"
-                                                checked={Array.isArray(selectedCols) && selectedCols.includes(col)}
+                                                checked={(Array.isArray(selectedCols) && selectedCols.includes(col)) || isEditing && (selectedRFKs && selectedRFKs[col])}
                                                 onChange={() => handleChange && handleChange(col)}
                                             />
                                             {col}
                                             {fk && (
                                                 <label
-                                                    onClick={() => toggle && toggle(fk.constraint_name)}
+                                                    onClick={() => toggleUI ? toggleUI(fk.constraint_name) : console}
                                                     style={{ cursor: "pointer", marginLeft: "8px" }}
                                                 >
                                                     {isToggled && isToggled(fk.constraint_name) ? "-" : "+"}
@@ -175,7 +176,7 @@ export default function TemplateSideMenu(props) {
                                         {fk && isToggled && isToggled(fk.constraint_name) && (
                                             <div className="nested" style={{ marginLeft: "16px" }}>
                                                 <label
-                                                    onClick={() => toggle && toggle(`${fk.constraint_name}-table`)}
+                                                    onClick={() => toggleUI && toggleUI(`${fk.constraint_name}-table`)}
                                                 >
                                                     <strong>{fk.referenced_table}</strong> {isToggled && isToggled(`${fk.constraint_name}-table`) ? "-" : "+"}
                                                 </label>

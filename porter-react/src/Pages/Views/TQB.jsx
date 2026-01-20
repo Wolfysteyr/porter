@@ -1,15 +1,10 @@
 import { useContext, useEffect } from "react"
-import Select from 'react-select';
 import { AppContext } from "../../Context/AppContext"
 import { useNavigate } from "react-router-dom";
 import Modal from 'react-modal';
-import Tippy from '@tippyjs/react';
-import Switch from 'react-switch';
 import TemplateSideMenu from "../../Components/TemplateSideMenu";
 import { useQueryBuilder } from "../../hooks/useQueryBuilder";
 
-// Add missing state hooks
-import { useRef } from "react";
 
 
 
@@ -105,7 +100,7 @@ export default function TQB() {
                 const data = await res.json();
                 qb.setTableCols(data.columns);
                 qb.setForeignKeys(data.foreignKeys);
-                handleFetchTableData();
+                qb.handleFetchTableData();
             } catch (error) {
                 // handle error
             } finally {
@@ -122,39 +117,39 @@ export default function TQB() {
         // eslint-disable-next-line
     }, [qb.selectedCols, qb.foreignKeysSelection, qb.selectedWhere, qb.rowLimit]);
 
-    // Fetch data from selected table from selected columns
-    async function handleFetchTableData() {
-        if (!qb.selectedTable) return;
-        try {
-            qb.toggleLoading(true);
-            const payload = {};
-            if (qb.selectedDatabase) payload.name = qb.selectedDatabase;
-            if (qb.rowLimit && Number(qb.rowLimit) > 0) payload.limit = Number(qb.rowLimit);
-            if (Array.isArray(qb.selectedCols) && qb.selectedCols.length > 0) payload.columns = qb.selectedCols;
-            if (Array.isArray(qb.foreignKeysSelection) && qb.foreignKeysSelection.length > 0) payload.foreign_keys = qb.foreignKeysSelection;
-            if (Array.isArray(qb.selectedWhere) && qb.selectedWhere.length > 0) payload.where = qb.selectedWhere;
-            const resource = await fetch(`${appAddress}/api/databases/external/tables/${qb.selectedTable}`, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: 'application/json',
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload),
-            });
-            if (!resource.ok) throw new Error(`Error ${resource.status}`);
-            const data = await resource.json();
-            qb.setShowSuccessGlow(true);
-            setTimeout(() => qb.setShowSuccessGlow(false), 2000);
-            const rows = Array.isArray(data) ? data : (data.rows ?? data.data ?? []);
-            qb.setTableData(rows);
-        } catch (err) {
-            // handle error
-        } finally {
-            qb.toggleLoading(false);
-            qb.setUpdatedData(false);
-        }
-    }
+    // // Fetch data from selected table from selected columns
+    // async function handleFetchTableData() {
+    //     if (!qb.selectedTable) return;
+    //     try {
+    //         qb.toggleLoading(true);
+    //         const payload = {};
+    //         if (qb.selectedDatabase) payload.name = qb.selectedDatabase;
+    //         if (qb.rowLimit && Number(qb.rowLimit) > 0) payload.limit = Number(qb.rowLimit);
+    //         if (Array.isArray(qb.selectedCols) && qb.selectedCols.length > 0) payload.columns = qb.selectedCols;
+    //         if (Array.isArray(qb.foreignKeysSelection) && qb.foreignKeysSelection.length > 0) payload.foreign_keys = qb.foreignKeysSelection;
+    //         if (Array.isArray(qb.selectedWhere) && qb.selectedWhere.length > 0) payload.where = qb.selectedWhere;
+    //         const resource = await fetch(`${appAddress}/api/databases/external/tables/${qb.selectedTable}`, {
+    //             method: 'POST',
+    //             headers: {
+    //                 Authorization: `Bearer ${token}`,
+    //                 Accept: 'application/json',
+    //                 'Content-Type': 'application/json',
+    //             },
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!resource.ok) throw new Error(`Error ${resource.status}`);
+    //         const data = await resource.json();
+    //         qb.setShowSuccessGlow(true);
+    //         setTimeout(() => qb.setShowSuccessGlow(false), 2000);
+    //         const rows = Array.isArray(data) ? data : (data.rows ?? data.data ?? []);
+    //         qb.setTableData(rows);
+    //     } catch (err) {
+    //         // handle error
+    //     } finally {
+    //         qb.toggleLoading(false);
+    //         qb.setUpdatedData(false);
+    //     }
+    // }
 
     // TemplateSideMenu logic is now in qb, pass all needed props
     return (
@@ -162,9 +157,10 @@ export default function TQB() {
             <h1 className="title">Table Query Builder </h1>
             <TemplateSideMenu
                 {...qb}
-                handleFetchTableData={handleFetchTableData}
+                handleFetchTableData={qb.handleFetchTableData}
                 populateFindOptions={() => {}}
                 handleSaveTemplate={() => {qb.handleSaveTemplate()}}
+                isEditing={false}
             />
             <div className={`main-div`}>
                 {qb.selectedTable && qb.tableData.length > 0 ? (
