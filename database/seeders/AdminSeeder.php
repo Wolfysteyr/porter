@@ -22,5 +22,14 @@ class AdminSeeder extends Seeder
                 'admin' => true,
             ]
         );
+
+        User::updateOrCreate(
+            ['email' => 'mca@vtl.lv'],
+            [
+                'name' => 'Maksims Carevs',
+                'password' => Hash::make('123'), 
+                'admin' => false,
+            ]
+        );
     }
 }
