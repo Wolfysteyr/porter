@@ -62,14 +62,6 @@ export default function TemplateSideMenu(props) {
         toggleLoading,
         handleColumnNameChange,
         removeColumnChange,
-        isAutomated,
-        handleAutomationToggle,
-        automationSchedule,
-        setAutomationSchedule,
-        automationPeriod,
-        setAutomationPeriod,
-        automationUnit,
-        setAutomationUnit,
         FRRules,
         limitOffsetRules, 
         showColumnWindow,
@@ -393,7 +385,7 @@ export default function TemplateSideMenu(props) {
                                 </div>
                             )}
                         </div>
-                        <div className={`rule-item` + (menus && menus["auto-menu"] ? ' open' : '')} onClick={() => toggleMenus && toggleMenus("auto-menu")}>
+                        {/* <div className={`rule-item` + (menus && menus["auto-menu"] ? ' open' : '')} onClick={() => toggleMenus && toggleMenus("auto-menu")}>
                             <label>Automation</label> <strong>{menus && menus["auto-menu"] ? "<" : ">"}</strong>
                         </div>
                         <div className={`rule-submenu-auto` + (menus && menus["auto-menu"] ? ' open' : '')}>
@@ -429,7 +421,7 @@ export default function TemplateSideMenu(props) {
                                     </>
                                 )}
                             </div>
-                        </div>
+                        </div> */}
                     </div>
                 </div>
             </div>

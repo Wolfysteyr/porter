@@ -1,17 +1,22 @@
-import React, { use } from "react";
 import { AppContext } from "../../Context/AppContext";
-import { useContext } from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useContext } from "react";
 import Modal from "react-modal";
-import { useNavigate, useLocation} from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import TemplateSideMenu from "../../Components/TemplateSideMenu";
 import { useQueryBuilder } from "../../hooks/useQueryBuilder";
 export default function Templates() {
+    // auto run stuff
+    const [autoRunSettings, setAutoRunSettings] = useState({}); // {[templateId]: {interval: ..., unit: ..., active: ...}}
+    const [autoCountdowns, setAutoCountdowns] = useState({}); //
+    const [updateCountdown, setUpdateCountdown] = useState(false);
+
+    //UI
+    const [toggles, setToggles] = useState({});
+
     // Context and global state
     const { appAddress, user, token } = useContext(AppContext);
     const navigate = useNavigate();
     const location = useLocation();
-    const { databases, setDatabases } = useState([]);
 
     // Templates state
     const [templates, setTemplates] = useState([]);
@@ -32,7 +37,46 @@ export default function Templates() {
     // Edit modal state
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [activeTemplate, setActiveTemplate] = useState(null);
-    const [editShowSuccessGlow, setEditShowSuccessGlow] = useState(false);
+    // const [editShowSuccessGlow, setEditShowSuccessGlow] = useState(false);
+
+    // update countdown every minute to avoid page refresh
+   
+
+    // countdown engine
+    useEffect(() => {
+        setUpdateCountdown(false);
+        const timer = setInterval(() => {
+            const now = Date.now();
+
+            const updated = {};
+
+            templates.forEach((t) => {
+                const next = t.next_auto_run_at;
+                const active = t.auto?.active;
+
+                if (!active || !next) return;
+
+                const diff = new Date(next).getTime() - now;
+
+                updated[t.id] = diff > 0 ? diff : 0;
+            });
+
+            setAutoCountdowns(updated);
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [templates, updateCountdown]);
+
+    function formatCountdown(ms) {
+        const s = Math.floor(ms / 1000);
+
+        const d = Math.floor(s / 86400);
+        const h = Math.floor((s % 86400) / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = s % 60;
+
+        return `${d}d ${h}h ${m}m ${sec}s`;
+    }
 
     // Only create the hook for the active template when editing
     const qb = useQueryBuilder({
@@ -43,8 +87,6 @@ export default function Templates() {
         template: activeTemplate || {},
         closeEditModal: () => setIsEditModalOpen(false),
     });
-
-
 
     // ensure databases are loaded for the side menu when editing
     useEffect(() => {
@@ -74,10 +116,34 @@ export default function Templates() {
         fetchTemplates();
     }, [appAddress, token]);
 
+    useEffect(() => {
+        let timeoutId;
+
+        const scheduleFetch = () => {
+            timeoutId = setTimeout(async () => {
+                await fetchTemplates();
+                scheduleFetch(); // Schedule the next fetch exactly 60 seconds after this one completes
+            }, 60_000);
+        };
+
+        // Initial delay of 5 seconds before the first fetch
+        timeoutId = setTimeout(async () => {
+            await fetchTemplates();
+            scheduleFetch();
+        }, 15_000);
+
+        return () => clearTimeout(timeoutId);
+    }, [appAddress, token]);
+
     // raise updatedData flag when relevant query builder state changes
-     useEffect(() => {
+    useEffect(() => {
         qb.setUpdatedData(true);
-    }, [qb.selectedCols, qb.foreignKeysSelection, qb.selectedWhere, qb.rowLimit]);
+    }, [
+        qb.selectedCols,
+        qb.foreignKeysSelection,
+        qb.selectedWhere,
+        qb.rowLimit,
+    ]);
 
     // Fetch databases for side menu
     useEffect(() => {
@@ -91,11 +157,9 @@ export default function Templates() {
                     },
                 });
                 const data = await response.json();
-                setDatabases(data);
-            } catch (e) {
-                setDatabases([]);
-            }
+            } catch (e) {}
         }
+        document.title = "Porter - Query Templates";
         fetchDatabases();
     }, [appAddress, token]);
 
@@ -106,15 +170,91 @@ export default function Templates() {
             openMessageModal(state.message);
 
             window.history.replaceState({}, document.title);
-
         }
     }, [location.state]);
 
+    // fetch template auto run settings from template
+    useEffect(() => {
+        const settings = {};
+        templates.forEach((template) => {
+            settings[template.id] = {
+                schedule: template.auto.schedule ?? "every",
+                interval: template.auto.interval ?? 5,
+                unit: template.auto.unit ?? "minutes",
+                active: template.auto.active ?? false,
+            };
+        });
+        setAutoRunSettings(settings);
+    }, [templates]);
+
+    // handle template auto run settings changes
+    const handleAutoRunSettingsChange = (templateId, settings) => {
+        setAutoRunSettings((prevSettings) => ({
+            ...prevSettings,
+            [templateId]: {
+                ...prevSettings[templateId],
+                ...settings,
+            },
+        }));
+
+        // debug
+        console.log("Auto run settings updated:", {
+            ...autoRunSettings,
+            [templateId]: {
+                ...autoRunSettings[templateId],
+                ...settings,
+            },
+        });
+    };
+
+    // handle saving auto run settings to backend | reuses existing API endpoint, just updates auto field
+    async function handleSaveAutoRunSettings(template) {
+        if (autoRunSettings[template.id].schedule !== "every") {
+            autoRunSettings[template.id].interval = null;
+            autoRunSettings[template.id].unit = null;
+        }
+        const payload = {
+            name: template.name,
+            database: template.database,
+            table: template.table,
+            query: template.query,
+            export: template.export,
+            user_id: template.user_id,
+            auto: {
+                schedule: autoRunSettings[template.id].schedule,
+                interval: autoRunSettings[template.id].interval,
+                unit: autoRunSettings[template.id].unit,
+                active: autoRunSettings[template.id].active,
+            },
+            last_auto_run_at: null,
+            next_auto_run_at: null,
+        };
+        try {
+            const response = await fetch(
+                `${appAddress}/api/query-templates/${template.id}`,
+                {
+                    method: "PUT",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(payload),
+                },
+            );
+            if (response.ok) {
+                openMessageModal("Auto run settings saved successfully");
+            } else {
+                openMessageModal("Failed to save auto run settings", false);
+            }
+        } catch (e) {
+            openMessageModal("Failed to save auto run settings", false);
+        }
+    }
     // toggle loading modal when fetching table data
     useEffect(() => {
         toggleLoading(qb.loading);
     }, [qb.loading]);
-
 
     // Open edit modal for editing a template
     function openEditModal(template) {
@@ -127,7 +267,6 @@ export default function Templates() {
         setIsEditModalOpen(false);
         setActiveTemplate(null);
         fetchTemplates();
-        
     }
 
     // open modal instead of calling window.confirm directly
@@ -149,6 +288,19 @@ export default function Templates() {
             setIsMessageModalOpen(false);
         }, 3000);
     }
+
+    // Toggle functions for UI elements
+    const toggleUI = useCallback((id) => {
+        setToggles((prev) => ({ ...prev, [id]: !prev[id] }));
+        // debug
+        console.log("Toggles after toggleUI:", {
+            ...toggles,
+            [id]: !toggles[id],
+        });
+    }, []);
+
+    // backward compatible alias
+    const isToggled = (id) => !!toggles[id];
 
     // perform the actual delete when user confirms in modal
     async function confirmDelete() {
@@ -271,69 +423,221 @@ export default function Templates() {
                             <span className="template-name">Name</span>
                             <span className="template-db">Database</span>
                             <span className="template-table">Table</span>
-                            <span
-                                className="template-created-at"
-                                style={{ minWidth: "120px" }}
-                            >
-                                Created at
-                            </span>
+
                             <span
                                 className="template-updated-at"
                                 style={{ minWidth: "140px" }}
                             >
                                 Last Updated
                             </span>
+                            <span className="auto-timer">Auto Run</span>
                             <span className="template-actions">Actions</span>
                         </li>
                         {visibleTemplates.map((template) => (
-                            <li className="template-item" key={template.id}>
-                                <span className="template-name">
-                                    {template.name}
-                                </span>
-                                <span className="template-db">
-                                    {template.database}
-                                </span>
-                                <span className="template-table">
-                                    {template.table}
-                                </span>
-                                <span className="template-created-at">
-                                    {new Date(
-                                        template.created_at,
-                                    ).toLocaleDateString()}
-                                </span>
-                                <span className="template-updated-at">
-                                    {new Date(
-                                        template.updated_at,
-                                    ).toLocaleDateString()}
-                                </span>
-                                <div className="template-actions">
+                            <>
+                                <li className="template-item" key={template.id}>
+                                    <span className="template-name">
+                                        {template.name}
+                                    </span>
+                                    <span className="template-db">
+                                        {template.database}
+                                    </span>
+                                    <span className="template-table">
+                                        {template.table}
+                                    </span>
+
+                                    <span className="template-updated-at">
+                                        {new Date(
+                                            template.updated_at,
+                                        ).toLocaleDateString()}
+                                    </span>
+                                    <span className="auto-timer">
+                                        {autoCountdowns[template.id]
+                                            ? formatCountdown(
+                                                  autoCountdowns[template.id],
+                                              )
+                                            : "Paused"}
+                                    </span>
+                                    <div className="template-actions">
+                                        <button
+                                            onClick={() =>
+                                                handleUseTemplate(template)
+                                            }
+                                            title="Click to use template"
+                                            className="use-button"
+                                        >
+                                            Use
+                                        </button>
+
+                                        <button
+                                            onClick={() =>
+                                                toggleUI(template.id)
+                                            }
+                                            title={
+                                                isToggled(template.id)
+                                                    ? "Close Auto Run Options"
+                                                    : "Open Auto Run Options"
+                                            }
+                                            className="auto-button"
+                                        >
+                                            {isToggled(template.id)
+                                                ? "Auto ▲"
+                                                : "Auto ▼"}
+                                        </button>
+                                        <button
+                                            onClick={() =>
+                                                handleEdit(template.id)
+                                            }
+                                            title="Click to edit template"
+                                            className="edit-button"
+                                        >
+                                            <img
+                                                src="public/icons/pencil.png"
+                                                alt="Edit"
+                                                style={{ maxWidth: "20px" }}
+                                            />
+                                        </button>
+                                        <button
+                                            onClick={() =>
+                                                openDeleteModal(template)
+                                            }
+                                            title="Click to delete template"
+                                            className="delete-button"
+                                        >
+                                            <img
+                                                src="public/icons/close.png"
+                                                alt="Delete"
+                                                style={{ maxWidth: "20px" }}
+                                            />
+                                        </button>
+                                    </div>
+                                </li>
+                                <div
+                                    className={`auto-run-options ${isToggled(template.id) ? "open" : ""}`}
+                                >
+                                    <br />
                                     <button
-                                        onClick={() =>
-                                            handleUseTemplate(template)
-                                        }
-                                        title="Click to use template"
-                                        className="use-button"
+                                        className="pause-resume-button"
+                                        onClick={() => {
+                                            handleAutoRunSettingsChange(
+                                                template.id,
+                                                {
+                                                    active: !autoRunSettings[
+                                                        template.id
+                                                    ]?.active,
+                                                },
+                                            );
+                                        }}
                                     >
-                                        Use
+                                        {autoRunSettings[template.id]?.active ? (
+                                            <img
+                                                src="public/icons/pause.png"
+                                                alt="Pause"
+                                                style={{
+                                                    maxWidth: "16px",
+                                                    marginRight: "5px",
+                                                }}
+                                            />
+                                        ) : (
+                                            <img
+                                                src="public/icons/play-button.png"
+                                                alt="Resume"
+                                                style={{
+                                                    maxWidth: "16px",
+                                                    marginRight: "5px",
+                                                }}
+                                            />
+                                        )}
                                     </button>
-                                    <button
-                                        onClick={() => handleEdit(template.id)}
-                                        title="Click to edit template"
-                                        className="edit-button"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        onClick={() =>
-                                            openDeleteModal(template)
+                                    <select
+                                        name="schedule"
+                                        id="schedule"
+                                        onChange={(e) =>
+                                            handleAutoRunSettingsChange(
+                                                template.id,
+                                                { schedule: e.target.value },
+                                            )
                                         }
-                                        title="Click to delete template"
-                                        className="delete-button"
+                                        value={
+                                            autoRunSettings[template.id]
+                                                ?.schedule || "every"
+                                        }
                                     >
-                                        X
+                                        <option value="every">Every</option>
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                        <option value="yearly">Yearly</option>
+                                    </select>
+                                    {autoRunSettings[template.id]?.schedule ===
+                                        "every" && (
+                                        <>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                defaultValue={
+                                                    autoRunSettings[template.id]
+                                                        ?.interval || 5
+                                                }
+                                                onChange={(e) =>
+                                                    handleAutoRunSettingsChange(
+                                                        template.id,
+                                                        {
+                                                            interval:
+                                                                e.target.value,
+                                                        },
+                                                    )
+                                                }
+                                            />
+                                            <select
+                                                name="unit"
+                                                id="unit"
+                                                defaultValue={
+                                                    autoRunSettings[template.id]
+                                                        ?.unit || "minutes"
+                                                }
+                                                onChange={(e) =>
+                                                    handleAutoRunSettingsChange(
+                                                        template.id,
+                                                        {
+                                                            unit: e.target
+                                                                .value,
+                                                        },
+                                                    )
+                                                }
+                                            >
+                                                <option value="minutes">
+                                                    Minutes
+                                                </option>
+                                                <option value="hours">
+                                                    Hours
+                                                </option>
+                                                <option value="days">
+                                                    Days
+                                                </option>
+                                                <option value="weeks">
+                                                    Weeks
+                                                </option>
+                                                <option value="months">
+                                                    Months
+                                                </option>
+                                                <option value="years">
+                                                    Years
+                                                </option>
+                                            </select>
+                                        </>
+                                    )}
+                                    <button
+                                        className="save-button"
+                                        title="Click to save changes"
+                                        onClick={() =>
+                                            handleSaveAutoRunSettings(template)
+                                        }
+                                    >
+                                        ✓
                                     </button>
                                 </div>
-                            </li>
+                            </>
                         ))}
                     </ul>
                 )}

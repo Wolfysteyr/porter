@@ -8,7 +8,6 @@ import Templates from "./Pages/Views/Templates.jsx";
 import Export from "./Pages/Views/Export.jsx";
 import SetPassword from "./Pages/Auth/SetPassword.jsx";
 import Databases from "./Pages/Views/Databases.jsx";
-import Automations from "./Pages/Views/Automations.jsx";
 
 import './App.css'
 import { useContext } from "react";
@@ -30,7 +29,6 @@ function App() {
         <Route path="/export" element={user ? <Export/> : <Login/>}/>
         <Route path="/set-password" element={<SetPassword/>}/>
         <Route path="/databases" element={user ? (user.admin === 1 ? <Databases/> : <Home/>) : <Login/>}/>
-        <Route path="/automations" element={user ? <Automations/> : <Login/>}/>
 
       </Route>
     </Routes>

@@ -28,7 +28,6 @@ class QueryTemplateController extends Controller
             'query' => 'sometimes|array',
             'export' => 'sometimes|array',
             'auto' => 'sometimes|array',
-            'UI' => 'sometimes|array',
             'user_id' => 'sometimes|integer|exists:users,id',
         ]);
 
@@ -39,7 +38,6 @@ class QueryTemplateController extends Controller
             'query' => $data['query'] ?? null,
             'export' => $data['export'] ?? null,
             'auto' => $data['auto'] ?? null,
-            'UI' => $data['UI'] ?? null,
             'user_id' => $data['user_id'] ?? auth()->id(),
         ]);
 
@@ -67,7 +65,6 @@ class QueryTemplateController extends Controller
             'export' => 'required|array',
             'user_id' => 'nullable|integer|exists:users,id',
             'auto' => 'sometimes|array',
-            'UI' => 'sometimes|array',
         ]);
 
         // update existing model
@@ -77,7 +74,6 @@ class QueryTemplateController extends Controller
         $tpl->query = $data['query'];
         $tpl->export = $data['export'];
         $tpl->user_id = $data['user_id'] ?? $tpl->user_id;
-        $tpl->UI = $data['UI'] ?? $tpl->UI;
         $tpl->auto = $data['auto'] ?? $tpl->auto;
         $tpl->save();
 

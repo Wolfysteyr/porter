@@ -24,7 +24,6 @@ export default function Home(){
                     {/* <Link to="/db" className="button">Database Data</Link> */}
                     <button onClick={() => navigate('/tqb')}>Table Query Builder</button> <br /> <br />
                     <button onClick={() => navigate('/templates')}> Query Templates</button> <br /> <br />
-                    <button onClick={() => navigate('/automations')}> Automations [WIP]</button>   <br /> <br />
                     {user.admin ? <><button onClick={() => navigate('/databases')}> Databases</button>   <br /> <br /></> : null}
                 </div>
             ) : 

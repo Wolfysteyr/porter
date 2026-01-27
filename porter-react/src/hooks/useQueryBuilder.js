@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, act } from "react";
 
 export function useQueryBuilder({
     appAddress,
@@ -17,10 +17,23 @@ export function useQueryBuilder({
     const [menus, setMenus] = useState({});
     const [toggleNewDBModal, setToggleNewDBModal] = useState(false);
     const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
-    const [toggles, setToggles] = useState(template.UI?.toggles || {});
-    const [selectedRFKs, setSelectedRFKs] = useState(
-        template.UI && template.UI.selectedRFKs ? template.UI.selectedRFKs : {},
-    );
+    const [toggles, setToggles] = useState({});
+    const [selectedRFKs, setSelectedRFKs] = useState(() => {
+        if (!Array.isArray(template.query?.foreign_keys)) return {};
+
+        return template.query.foreign_keys.reduce((acc, fk) => {
+            if (!fk.parentCol || !Array.isArray(fk.fkTables)) return acc;
+
+            const cols = fk.fkTables.flatMap((t) =>
+                Array.isArray(t.fkColumns) ? t.fkColumns : [],
+            );
+
+            if (cols.length) acc[fk.parentCol] = cols;
+
+            return acc;
+        }, {});
+    });
+
     const isHydratingTemplate = useRef(false);
 
     // Modal & Message
@@ -75,18 +88,6 @@ export function useQueryBuilder({
     const [limitOffsetRules, setLimitOffsetRules] = useState(
         template.export?.limitOffsetRules || [],
     );
-    const [isAutomated, setIsAutomated] = useState(
-        !!(template.auto && template.auto.enabled),
-    );
-    const [automationSchedule, setAutomationSchedule] = useState(
-        template.auto?.schedule || "every",
-    );
-    const [automationPeriod, setAutomationPeriod] = useState(
-        template.auto?.interval ? String(template.auto.interval) : "5",
-    );
-    const [automationUnit, setAutomationUnit] = useState(
-        template.auto?.unit || "minutes",
-    );
 
     // Export Target
     const [targetDatabase, setTargetDatabase] = useState("");
@@ -105,13 +106,6 @@ export function useQueryBuilder({
         setSelectedCols(template.query?.columns || []);
         setSelectedWhere(template.query?.where || []);
         setForeignKeysSelection(template.query?.foreign_keys || []);
-        setSelectedRFKs(
-            template.UI && template.UI.selectedRFKs
-                ? template.UI.selectedRFKs
-                : {},
-        );
-        // <-- ensure toggles are kept in sync with provided template
-        setToggles(template.UI?.toggles || {});
 
         setTemplateName(template.name || "");
         setExportType(Boolean(template.export?.exportType));
@@ -130,13 +124,21 @@ export function useQueryBuilder({
                 ? template.export.limitOffsetRules
                 : [],
         );
+        const fkMap = Array.isArray(template.query?.foreign_keys)
+            ? template.query.foreign_keys.reduce((acc, fk) => {
+                  if (!fk.parentCol || !Array.isArray(fk.fkTables)) return acc;
 
-        setIsAutomated(!!(template.auto && template.auto.enabled));
-        setAutomationSchedule(template.auto?.schedule || "every");
-        setAutomationPeriod(
-            template.auto?.interval ? String(template.auto.interval) : "5",
-        );
-        setAutomationUnit(template.auto?.unit || "minutes");
+                  const cols = fk.fkTables.flatMap((t) =>
+                      Array.isArray(t.fkColumns) ? t.fkColumns : [],
+                  );
+
+                  if (cols.length) acc[fk.parentCol] = cols;
+
+                  return acc;
+              }, {})
+            : {};
+
+        setSelectedRFKs(fkMap);
     }, [template]);
 
     // Derived Values for UI
@@ -193,23 +195,6 @@ export function useQueryBuilder({
             query.where = selectedWhere;
         if (Object.keys(query).length === 0) query.columns = ["*"];
 
-        let auto = {};
-        if (isAutomated) {
-            if (automationSchedule !== "every")
-                auto = {
-                    schedule: automationSchedule,
-                    interval: null,
-                    unit: null,
-                };
-            else
-                auto = {
-                    schedule: automationSchedule,
-                    interval: automationPeriod,
-                    unit: automationUnit,
-                };
-        } else auto = { schedule: null, interval: null, unit: null };
-
-        let UI = { toggles, selectedRFKs };
         let eggsport = {
             exportType,
             targetDatabase,
@@ -219,33 +204,12 @@ export function useQueryBuilder({
             columnNameChanges,
         };
 
-        let automation = { enabled: false };
-        if (isAutomated) {
-            if (automationSchedule === "Every ...") {
-                const n = Number(automationPeriod);
-                if (!n || n <= 0) {
-                    showMessage(
-                        "Please provide a positive number for automation interval.",
-                        false,
-                    );
-                    return;
-                }
-                automation = {
-                    enabled: true,
-                    schedule: automationSchedule,
-                    interval: n,
-                    unit: automationUnit,
-                };
-            } else if (automationSchedule)
-                automation = { enabled: true, schedule: automationSchedule };
-            else {
-                showMessage(
-                    "Please choose an automation schedule or disable automation.",
-                    false,
-                );
-                return;
-            }
-        }
+        let auto = {
+            schedule: null,
+            interval: null,
+            unit: null,
+            active: false,
+        };
 
         const payload = {
             name: templateName,
@@ -253,13 +217,9 @@ export function useQueryBuilder({
             table: selectedTable,
             query,
             export: eggsport,
-            automation,
             user_id: user.id,
-            auto,
-            UI,
+            auto: auto,
         };
-
-
 
         if (template.id) {
             fetch(`${appAddress}/api/query-templates/${template.id}`, {
@@ -292,29 +252,31 @@ export function useQueryBuilder({
                 );
         } else {
             fetch(`${appAddress}/api/query-templates`, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: "application/json",
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-        })
-            .then(async (response) => {
-                const data = await response.json();
-                if (!response.ok) {
-                    const errorMsg = data?.message || "An error occurred";
-                    setTemplateNameErr(true);
-                    setTemplateNameErrMsg(errorMsg);
-                    throw new Error(errorMsg);
-                }
-                setTemplateNameErr(false);
-                setTemplateNameErrMsg("");
-                navigate("/templates", {
-                    state: { message: "Template saved successfully!" },
-                });
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(payload),
             })
-            .catch((error) => console.error("Error saving template:", error));
+                .then(async (response) => {
+                    const data = await response.json();
+                    if (!response.ok) {
+                        const errorMsg = data?.message || "An error occurred";
+                        setTemplateNameErr(true);
+                        setTemplateNameErrMsg(errorMsg);
+                        throw new Error(errorMsg);
+                    }
+                    setTemplateNameErr(false);
+                    setTemplateNameErrMsg("");
+                    navigate("/templates", {
+                        state: { message: "Template saved successfully!" },
+                    });
+                })
+                .catch((error) =>
+                    console.error("Error saving template:", error),
+                );
         }
     }
 
@@ -571,22 +533,10 @@ export function useQueryBuilder({
         }
     };
 
-    // Handle automation toggle
-    const handleAutomationToggle = (checked) => {
-        const next = typeof checked === "boolean" ? checked : !isAutomated;
-        setIsAutomated(next);
-        if (!next) {
-            setAutomationSchedule("every");
-            setAutomationPeriod("5");
-            setAutomationUnit("minutes");
-        } else {
-            setAutomationSchedule((prev) => prev || "Daily");
-        }
-    };
-
     // Toggle functions for UI elements
     const toggleUI = useCallback((id) => {
         setToggles((prev) => ({ ...prev, [id]: !prev[id] }));
+        // debug
         console.log("Toggles after toggleUI:", {
             ...toggles,
             [id]: !toggles[id],
@@ -858,14 +808,6 @@ export function useQueryBuilder({
         setMenus,
         selectedColsCount,
         selectedRFKsCount,
-        isAutomated,
-        setIsAutomated,
-        automationSchedule,
-        setAutomationSchedule,
-        automationPeriod,
-        setAutomationPeriod,
-        automationUnit,
-        setAutomationUnit,
         tableData,
         setTableData,
         tableCols,
@@ -884,7 +826,6 @@ export function useQueryBuilder({
         handleCreateNewDatabase,
         showMessage,
         toggleExportType,
-        handleAutomationToggle,
         isToggled,
         addFRRule,
         addLimitOffset,

@@ -19,7 +19,7 @@ class Kernel extends ConsoleKernel
     /**
      * Define the application's command schedule.
      */
-    protected function schedule(Schedule $schedule): void
+    public function schedule(Schedule $schedule): void
     {
         // Run the auto-dispatcher every minute. It will only enqueue templates
         // whose `auto` JSON is present and whose schedule is due.

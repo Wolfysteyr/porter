@@ -49,16 +49,15 @@ class ExportService
         $content = $response->getContent();
         // decide filename; controller already produced one in headers but we re-generate
         $filename = Str::slug($tpl->name) . '_export_' . date('Ymd_His') . '.csv';
-        $path = "exports/{$filename}";
-        Storage::put($path, $content);
+        Storage::disk('public')->put("exports/{$filename}", $content);
 
         // Try to infer number of rows: count lines minus header
         $rows = max(0, substr_count($content, PHP_EOL) - 1);
 
-        Log::info("ExportService: stored {$path}, rows={$rows}");
+        Log::info("ExportService: stored exports/{$filename}, rows={$rows}");
 
         return [
-            'path' => $path,
+            'path' => "exports/{$filename}",
             'filename' => $filename,
             'rows' => $rows,
         ];

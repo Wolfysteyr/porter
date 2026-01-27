@@ -716,8 +716,6 @@ h6{
 }
 
 
-
-
 @keyframes selectAppear {
   0% {
     opacity: 0;
@@ -733,7 +731,6 @@ h6{
     box-shadow: white 0px 0px 0px;
   }
 }
-
 
 .template-list {
   list-style: none;
@@ -753,8 +750,10 @@ h6{
   text-align: left;
   align-items: center;
   display: grid;                  /* <-- changed from flex */
-  grid-template-columns: minmax(180px, 1fr) 140px 120px 140px 160px 110px;
+  grid-template-columns: minmax(120px, 1fr) 200px 120px 140px 200px 150px;
   gap: 0.5rem;
+  z-index: 100;
+  position: relative;
 
   /* remove max-height so content doesn't get clipped/misaligned */
 }
@@ -763,120 +762,115 @@ h6{
   background-color: #334664; 
 }
 
-/* Database items for Databases page */
-.database-item {
-  background-color: #353d49;
-  padding: 1rem;
-  margin: 0.5rem 0;               /* smaller vertical spacing so rows line up */
-  border: 1px solid #eee;
+.auto-run-options{
+  background-color: #4b5768;
+  border: 2px solid #eee;
+  padding: 0rem 1rem 0rem 1rem;
   border-radius: 5px;
-  transition: background-color 0.3s;
-  text-align: left;
-  align-items: center;
-  display: grid;                  /* <-- changed from flex */
-  grid-template-columns: minmax(180px, 1fr) 140px 120px 140px 160px 110px;
+  display: flex;
+  flex-direction: row;
   gap: 0.5rem;
-
-  /* remove max-height so content doesn't get clipped/misaligned */
+  z-index: 5;
+  right: 20%;
+  max-width: 500px;
+  max-height: 0;
+  overflow: hidden;
+  transform: translateY(-20px);
+  opacity: 0;
+  transition: max-height 0.5s ease-in-out, opacity 0.7s ease-in-out, transform 0.5s ease-in-out, padding 0.5s ease-in-out;
+  justify-content: center;
+  justify-self: end;
 }
 
-.database-item:hover {
-  background-color: #334664; 
+.auto-run-options.open{
+  max-height: 70px;
+  opacity: 1;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+  transform: translateY(-15px);
 }
+
+.auto-run-options input[type="number"]{
+  width: 80px;
+  text-align: center;
+}
+
 
 /* Header row uses same grid so column names line up */
 .template-header {
-  background: transparent;
+  background: #1e293b; /* Slate-800 */
   border: none;
   cursor: default;
   font-weight: 700;
   padding: 0.75rem 1rem;
   margin: 0.5rem 0;
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 140px 120px 140px 160px 110px;
   gap: 0.5rem;
   align-items: center;
-  position: sticky;               /* keeps header visible at top while scrolling */
-  top: 0;
+  grid-template-columns: minmax(180px, 1fr) 200px 120px 140px 200px 150px;
+  position: sticky;             
+  top: 120px;
   z-index: 5;
 }
 
-/* Keep text on one line and ellipsize overflow for columns with limited width */
-.template-item span, .template-header span, .database-item span {
+
+.template-item span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
 }
 
-.template-item span:hover, .database-item span:hover {
-  overflow: visible;
-  text-overflow: clip;
-  white-space: normal;
-  z-index: 50;
-  transition: font-size 0.3s, box-shadow 0.3s;
-  font-size: large;
-  text-shadow: white 0px 0px 5px;
-  font-weight: 600;
-}
-
-/* Disable hover effects on header spans */
-.template-header span:hover {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  z-index: auto;
-  font-size: inherit;
-  text-shadow: none;
-  font-weight: bold;
-}
 
 /* Right align actions column */
 .template-actions {
   justify-self: end;
   display: flex;
-  gap: 0.5rem;
   align-items: center;
+}
+
+
+/* BUTTON STYLES */
+
+button{
+  color: white;
+  border: none;
+  padding: 0.5rem 0.9rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: transform 0.3s, box-shadow 0.3s, background-color 0.3s;
 }
 
 .use-button {
   background-color: #047d04; /* Green */
-  color: white;
-  border: none;
-  padding: 0.5rem 0.9rem;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: transform 0.3s, box-shadow 0.3s, background-color 0.3s;
-  margin-left: 0.5rem; 
-}
-
-.save-button:hover{
-  box-shadow: 0 0 10px #04b304;
-  background-color: #047d04;
-  transform: scale(1.05);
-  transition: background-color 0.3s, box-shadow 0.3s, transform 0.3s;
+  margin: 0.5rem 0.5rem;
 }
 
 .edit-button {
   background-color: #b36d04; /* orang */
-  color: white;
-  border: none;
-  padding: 0.5rem 0.9rem;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: transform 0.3s, box-shadow 0.3s, background-color 0.3s;
-  margin-left: 0.5rem;
 }
 
 .delete-button {
   background-color: #b30404; /* Red */
-  color: white;
-  border: none;
-  padding: 0.5rem 0.9rem;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: transform 0.3s, box-shadow 0.3s, background-color 0.3s;
 }
+
+.auto-button {
+  background-color: #045fb3; /* Blue */
+  padding-left: 0%;
+  padding-right: 0%;
+  min-width: 80px;
+  margin-right: 0.5rem;
+}
+
+.pause-resume-button{
+  background-color: #ffffff; /* Blue */
+  padding: 0%;
+  min-width: 40px;
+  min-height: 40px;
+  
+}
+
+/* Hover effects for buttons */
 
 .use-button:hover {
   box-shadow: 0 0 10px #04b304;
@@ -891,6 +885,17 @@ h6{
 .edit-button:hover{
   box-shadow: 0 0 10px #ffaa00;
   transform: scale(1.05);
+}
+
+.auto-button:hover{
+  box-shadow: 0 0 10px #00aaff;
+  transform: scale(1.05);
+}
+.save-button:hover{
+  box-shadow: 0 0 10px #04b304;
+  background-color: #047d04;
+  transform: scale(1.05);
+  transition: background-color 0.3s, box-shadow 0.3s, transform 0.3s;
 }
 
 .delete-modal{
@@ -1282,12 +1287,12 @@ h6{
   display: flex;
   justify-content: right;
 }
-.db-grid .db-card .card-buttons .edit-button{
+.db-grid .db-card .card-buttons .edit-button, .template-item .template-actions .edit-button{
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
 }
 
-.db-grid .db-card .card-buttons .delete-button{
+.db-grid .db-card .card-buttons .delete-button, .template-item .template-actions .delete-button{
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
 }

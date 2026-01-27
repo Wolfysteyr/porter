@@ -15,18 +15,21 @@ class DispatchAutoExports extends Command
 
     public function handle()
     {
-       
         $dry = $this->option('dry-run');
-        // fetch templates with non-null auto
-        $templates = QueryTemplate::whereNotNull('auto')->get();
+        // Fetch templates with non-null auto
+        $templates = QueryTemplate::whereNotNull('auto')
+            ->where('auto->active', true)
+            ->get();
 
         foreach ($templates as $tpl) {
             $auto = $tpl->auto ?? [];
-            // The frontend provides an 'auto' shape like:
-            // { schedule: automationSchedule, interval: automationPeriod, unit: automationUnit }
-            // If schedule === 'every' then interval+unit are used to build a cron expression.
-            // Otherwise we assume 'schedule' contains a cron expression string. If schedule is null/empty,
-            // the template is not scheduled.
+            // Treat 'auto' strictly as config: schedule, interval, unit, active.
+            // Do NOT read timestamps from 'auto'—use DB fields only.
+
+            if (empty($auto['active'])) {
+                continue;
+            }
+
             $cron = null;
             if (isset($auto['schedule'])) {
                 $this->info("Template number {$tpl->id} schedule: " . $auto['schedule'] . ' ' . ($auto['interval'] ?? '') . ' ' . ($auto['unit'] ?? ''));
@@ -51,7 +54,7 @@ class DispatchAutoExports extends Command
                             break;
                         case 'week':
                         case 'weeks':
-                            // approximate weeks as N*7 days
+                            // Approximate weeks as N*7 days
                             $days = $interval * 7;
                             $cron = "0 0 */{$days} * *";
                             break;
@@ -60,12 +63,12 @@ class DispatchAutoExports extends Command
                             $cron = "0 0 1 */{$interval} *";
                             break;
                         default:
-                            // unknown unit; skip this template
+                            // Unknown unit; skip this template
                             $this->error("Unknown auto.unit '{$auto['unit']}' for template {$tpl->id}");
                             continue 2;
                     }
                 } elseif (!empty($auto['schedule'])) {
-                    // normalize common human-friendly schedules (daily, hourly, weekly, etc.)
+                    // Normalize common human-friendly schedules
                     $sched = trim($auto['schedule']);
                     $lower = strtolower($sched);
                     $named = [
@@ -79,10 +82,10 @@ class DispatchAutoExports extends Command
                     if (isset($named[$lower])) {
                         $cron = $named[$lower];
                     } elseif (strpos($sched, '@') === 0 && isset($named[ltrim($lower, '@')])) {
-                        // allow "@daily" style by mapping to cron
+                        // Allow "@daily" style
                         $cron = $named[ltrim($lower, '@')];
                     } else {
-                        // fall back to the provided string (will be validated later)
+                        // Fall back to the provided string
                         $cron = $sched;
                     }
                 }
@@ -91,26 +94,36 @@ class DispatchAutoExports extends Command
             if (empty($cron)) {
                 continue;
             }
-            $tz = config('app.timezone', 'Europe/Riga');
 
-            // check cron is due
-            try {
-                $expr = CronExpression::factory($cron);
-            } catch (\Exception $e) {
-                $this->error("Invalid cron for template {$tpl->id}: {$e->getMessage()}");
-                continue;
+            $tz = config('app.timezone', 'Europe/Riga');
+            $now = new \DateTime('now', new \DateTimeZone($tz));
+
+            // Recompute next_auto_run_at based on current 'auto' config to reflect any changes
+            $tpl->updateNextAutoRunAt();
+            $tpl->save(); // Ensure it's saved if updated
+
+            // Check if due using the updated next_auto_run_at
+            if (empty($tpl->next_auto_run_at)) {
+                continue; // No next run set
+            }
+            $nextRun = new \DateTime($tpl->next_auto_run_at, new \DateTimeZone($tz));
+            $isDue = $now >= $nextRun;
+
+            // Special case for new templates without last_auto_run_at: check if cron is due now
+            if (!$isDue && empty($tpl->last_auto_run_at)) {
+                try {
+                    $expr = CronExpression::factory($cron);
+                    $isDue = $expr->isDue($now);
+                } catch (\Exception $e) {
+                    // If cron invalid, skip
+                    $isDue = false;
+                }
             }
 
-            $now = new \DateTime('now', new \DateTimeZone($tz));
-            if (!$expr->isDue($now)) {
-                // Diagnostic: show why nothing was dispatched during dry-run
+            if (!$isDue) {
+                // Diagnostic output
                 if ($dry || $this->output->isVerbose()) {
-                    try {
-                        $next = $expr->getNextRunDate($now)->format('Y-m-d H:i:s');
-                        $this->line("Template {$tpl->id} not due yet. Next run: {$next} (cron: {$cron})");
-                    } catch (\Throwable $e) {
-                        $this->line("Template {$tpl->id} not due yet (cron: {$cron})");
-                    }
+                    $this->line("Template {$tpl->id} not due yet. Next run: {$tpl->next_auto_run_at} (cron: {$cron})");
                 }
                 continue;
             }
@@ -119,17 +132,10 @@ class DispatchAutoExports extends Command
             $lock = Cache::lock($lockKey, 300); // 5 min lock
             if ($lock->get()) {
                 try {
-                    // Prevent duplicate dispatches by checking last_auto_run_at
-                    // against the previous scheduled run time. If last_auto_run_at
-                    // is >= previous run, we assume this schedule already ran.
-                    try {
-                        $prevRun = $expr->getPreviousRunDate($now)->format('Y-m-d H:i:s');
-                    } catch (\Throwable $e) {
-                        // If unable to compute previous run, fall back to time-window check
-                        $prevRun = date('Y-m-d H:i:s', strtotime('-55 seconds'));
-                    }
-
-                    if (!empty($tpl->last_auto_run_at) && strtotime($tpl->last_auto_run_at) >= strtotime($prevRun)) {
+                    // Prevent duplicates: Check last_auto_run_at against a safe window
+                    // Use a 1-minute buffer to avoid skipping due to minor timing issues
+                    $safePrevRun = date('Y-m-d H:i:s', strtotime('-1 minute'));
+                    if (!empty($tpl->last_auto_run_at) && strtotime($tpl->last_auto_run_at) >= strtotime($safePrevRun)) {
                         $this->line("Skipped {$tpl->id} (already dispatched at {$tpl->last_auto_run_at})");
                     } else {
                         if ($dry) {
@@ -137,13 +143,10 @@ class DispatchAutoExports extends Command
                         } else {
                             dispatch(new ExportTemplateJob($tpl->id));
 
-                            // Update both the atomic DB column and the auto JSON last_run_at
-                            $tpl->last_auto_run_at = now()->toDateTimeString();
-                            $auto['last_run_at'] = now()->toDateTimeString();
-                            $tpl->auto = $auto;
+                            // Update timestamps in DB fields only
+                            $tpl->last_auto_run_at = now();
+                            $tpl->updateNextAutoRunAt(); // Recompute from now after dispatch
                             $tpl->save();
-
-                            $this->info("Dispatched template {$tpl->id}");
                         }
                     }
                 } finally {
