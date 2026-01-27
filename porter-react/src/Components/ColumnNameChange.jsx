@@ -5,7 +5,7 @@ import { AppContext } from '../Context/AppContext';
 export default function ColumnNameChange({
     nameChange,
     index,
-    findOptions,
+    sourceColumns,
     targetDatabase,
     targetTable,
     toggleLoading,
@@ -23,13 +23,20 @@ export default function ColumnNameChange({
    const [dbColumns, setDbColumns] = useState([]);
     const [targetColumn, setTargetColumn] = useState('');
 
+    const sourceCols = Array.isArray(sourceColumns) ? sourceColumns : [];
+
     // keep local fields in sync if parent updates nameChange
     useEffect(() => {
         setOriginalName(nameChange.original ?? '');
         setNewNameCSV(nameChange.new ?? '');
+
+        // In DB mode, the "new" value is selected from the target table column list.
+        if (exportType) {
+            setTargetColumn(nameChange.new ?? '');
+        }
         
         if (!nameChange?.new) setTargetColumn('');
-    }, [nameChange]);
+    }, [ exportType]);
     
     // sync local edits back to parent state — avoid infinite loop by limiting when we push changes
     useEffect(() => {
@@ -56,7 +63,6 @@ export default function ColumnNameChange({
                 }
             }
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
         originalName,
         targetColumn,
@@ -71,11 +77,11 @@ export default function ColumnNameChange({
     useEffect(() => {
         // fetch columns when targetTable changes
         const fetchColumns = async () => {
-            if (targetTable) {
+            if (targetDatabase && targetTable) {
                 try {
                     toggleLoading(true);
                     const response = await fetch(`${appAddress}/api/databases/external/tables/${encodeURIComponent(targetTable)}/columns?name=${encodeURIComponent(targetDatabase)}`, {
-                        headers: { Authorization: `Bearer ${token}` },
+                        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
                         method: 'GET'
                     });
 
@@ -89,10 +95,12 @@ export default function ColumnNameChange({
                 } finally {
                     toggleLoading(false);
                 }
+            } else {
+                setDbColumns([]);
             }
         };
         fetchColumns();
-    }, [targetTable]);
+    }, [targetTable, targetDatabase, appAddress, token, toggleLoading]);
 
     return (
             <div className="column-name-change-field">
@@ -104,9 +112,8 @@ export default function ColumnNameChange({
                         <>
                             <label>Old Column Name</label>
                             <Select
-                                // filtered: remove columns already chosen in other entries (old or new)
-                                options={Object.keys(findOptions || {})
-                                    .filter(col => !nameChange?.original?.includes(col) && !nameChange?.new?.includes(col))
+                                options={sourceCols
+                                    .filter(col => !columnNameChanges?.some((change, i) => i !== index && change?.original === col))
                                     .map(col => ({ value: col, label: col }))}
                                 value={originalName ? { value: originalName, label: originalName } : null}
                                 onChange={(selected) => {
@@ -143,8 +150,7 @@ export default function ColumnNameChange({
                                 <>
                                     <label>Old Column Name</label>
                                     <Select
-                                        // filtered: remove columns already chosen in other entries (old or new)
-                                        options={Object.keys(findOptions || {})
+                                        options={sourceCols
                                             .filter(col => !columnNameChanges.some(change => change.original === col) || col === nameChange?.original)
                                             .map(col => ({ value: col, label: col }))}
                                         value={originalName ? { value: originalName, label: originalName } : null}

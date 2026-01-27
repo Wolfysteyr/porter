@@ -124,7 +124,7 @@ export default function TQB() {
             <TemplateSideMenu
                 {...qb}
                 handleFetchTableData={qb.handleFetchTableData}
-                populateFindOptions={() => {}}
+                populateFindOptions={qb.populateFindOptions}
                 handleSaveTemplate={() => {qb.handleSaveTemplate()}}
                 isEditing={false}
             />

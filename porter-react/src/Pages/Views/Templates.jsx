@@ -771,7 +771,7 @@ export default function Templates() {
                         {...qb}
                         handleFetchTableData={qb.handleFetchTableData}
                         handleSaveTemplate={qb.handleSaveTemplate}
-                        populateFindOptions={() => {}}
+                        populateFindOptions={qb.populateFindOptions}
                         isEditing={true}
                     />
                 </div>

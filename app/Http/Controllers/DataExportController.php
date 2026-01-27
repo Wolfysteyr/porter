@@ -391,8 +391,8 @@ class DataExportController extends ExternalDbController
     }
 
     public function exportDataDB(Request $request) {
+        Log::info('Starting exportDataDB process');
         set_time_limit(300); // allow up to 5 minutes
-                $template_name = $request->input('template_name');
         $database = $request->input('database');
         $table = $request->input('table');
         $columns = $request->input('query.columns', []);

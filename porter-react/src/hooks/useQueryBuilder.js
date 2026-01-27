@@ -94,6 +94,10 @@ export function useQueryBuilder({
     const [targetTable, setTargetTable] = useState("");
     const [dbTables, setDbTables] = useState([]);
 
+    // Find options for find-replace rules
+    const [findOptions, setFindOptions] = useState({});
+    const [findOptionsLoading, setFindOptionsLoading] = useState(false);
+
     // Keep internal state in sync when the provided `template` changes
     useEffect(() => {
         if (!template || Object.keys(template).length === 0) return;
@@ -109,10 +113,16 @@ export function useQueryBuilder({
 
         setTemplateName(template.name || "");
         setExportType(Boolean(template.export?.exportType));
+        setTargetDatabase(template.export?.targetDatabase || "");
+        setTargetTable(template.export?.targetTable || "");
         setColumnNameChanges(
             Array.isArray(template.export?.columnNameChanges)
                 ? template.export.columnNameChanges
                 : [],
+        );
+        setShowColumnWindow(
+            Array.isArray(template.export?.columnNameChanges) &&
+                template.export.columnNameChanges.length > 0,
         );
         setFRRules(
             Array.isArray(template.export?.findReplaceRules)
@@ -570,6 +580,72 @@ export function useQueryBuilder({
     const removeColumnChange = (index) =>
         setColumnNameChanges((prev) => prev.filter((_, i) => i !== index));
 
+    // Populate find options for find-replace rules (fetches all rows, groups unique values by column)
+    const populateFindOptions = async () => {
+        if (!selectedTable || !selectedDatabase) return {};
+        console.log("Populating find options for", selectedTable);
+        setFindOptionsLoading(true);
+        try {
+            const payload = {};
+            if (selectedDatabase) payload.name = selectedDatabase;
+            // No limit to get ALL rows
+            if (Array.isArray(selectedCols) && selectedCols.length > 0)
+                payload.columns = selectedCols;
+            // Backend typically enforces a default row limit; request a larger sample for option population.
+            // (Still capped to avoid huge payloads.)
+            payload.limit = 10000;
+            if (
+                Array.isArray(foreignKeysSelection) &&
+                foreignKeysSelection.length > 0
+            )
+                payload.foreign_keys = foreignKeysSelection;
+            if (Array.isArray(selectedWhere) && selectedWhere.length > 0)
+                payload.where = selectedWhere;
+
+            const response = await fetch(
+                `${appAddress}/api/databases/external/tables/${encodeURIComponent(selectedTable)}`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(payload),
+                },
+            );
+            if (!response.ok) throw new Error(`Error ${response.status}`);
+            const json = await response.json();
+            const rows = Array.isArray(json)
+                ? json
+                : (json?.rows ?? json?.data ?? []);
+
+            // Group unique raw values by column (FRRuleField expects arrays of primitive values)
+            // Use keys present in returned rows so this works for "All columns" and FK-projected columns.
+            const groupedSets = {};
+            (Array.isArray(rows) ? rows : []).forEach((row) => {
+                if (!row || typeof row !== "object") return;
+                Object.entries(row).forEach(([key, val]) => {
+                    if (!groupedSets[key]) groupedSets[key] = new Set();
+                    groupedSets[key].add(val);
+                });
+            });
+
+            const options = {};
+            Object.keys(groupedSets).forEach((key) => {
+                options[key] = Array.from(groupedSets[key]);
+            });
+            setFindOptions(options);
+            return options;
+        } catch (err) {
+            console.error("Failed to populate find options", err);
+            setFindOptions({});
+            return {};
+        } finally {
+            setFindOptionsLoading(false);
+        }
+    };
+
     const handleChange = (col) => {
         setSelectedCols((prev) =>
             prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col],
@@ -820,6 +896,9 @@ export function useQueryBuilder({
         setTargetTable,
         dbTables,
         setDbTables,
+        findOptions,
+        setFindOptions,
+        findOptionsLoading,
         updatedData,
         setUpdatedData,
         getDatabases,
@@ -848,5 +927,8 @@ export function useQueryBuilder({
         handleSaveTemplate,
         toggleUI,
         editTableData,
+        populateFindOptions,
+        toggleLoading,
+        template
     };
 }
