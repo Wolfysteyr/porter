@@ -55,13 +55,14 @@ export default function Login(){
                     className={errors.email ? "errorinput" : ""}/>
                     {errors.email && <p className='error'>{errors.email[0]}</p>}
                 </div>
+                <br />
                 <div>
                     <input type="password" value={formData.password} 
                     onChange={(e) => setFormData({...formData, password: e.target.value})} placeholder="Password"
                     className={errors.password ? "errorinput" : ""}/>
                     {errors.password && <p className='error'>{errors.password[0]}</p>}
                 </div>
-
+                <br />
                 <div>
                     <input type="submit" value="Login" />
                 </div>
