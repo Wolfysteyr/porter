@@ -632,6 +632,7 @@ footer{
   position: fixed;
   width: 100%;
   bottom: 0;
+  z-index: 1000;
 }
 
 footer p{
@@ -749,7 +750,7 @@ h6{
   transition: background-color 0.3s;
   text-align: left;
   align-items: center;
-  display: grid;                  /* <-- changed from flex */
+  display: grid;                 
   grid-template-columns: minmax(120px, 1fr) 200px 120px 140px 200px 150px;
   gap: 0.5rem;
   z-index: 100;
@@ -761,6 +762,23 @@ h6{
 .template-item:hover {
   background-color: #334664; 
 }
+
+.template-item .auto-timer{
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.template-item .auto-timer .active{
+  max-width: fit-content;
+  text-decoration: dotted underline;
+  text-decoration-thickness: 2px;
+  cursor: help;
+  
+}
+
 
 .auto-run-options{
   background-color: #4b5768;
@@ -810,7 +828,7 @@ h6{
   grid-template-columns: minmax(180px, 1fr) 200px 120px 140px 200px 150px;
   position: sticky;             
   top: 120px;
-  z-index: 5;
+  z-index: 1000;
 }
 
 

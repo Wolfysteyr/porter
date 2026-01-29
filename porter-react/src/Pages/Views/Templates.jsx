@@ -4,6 +4,7 @@ import Modal from "react-modal";
 import { useNavigate, useLocation } from "react-router-dom";
 import TemplateSideMenu from "../../Components/TemplateSideMenu";
 import { useQueryBuilder } from "../../hooks/useQueryBuilder";
+import Tippy from "@tippyjs/react";
 export default function Templates() {
     // auto run stuff
     const [autoRunSettings, setAutoRunSettings] = useState({}); // {[templateId]: {interval: ..., unit: ..., active: ...}}
@@ -76,6 +77,17 @@ export default function Templates() {
         const sec = s % 60;
 
         return `${d}d ${h}h ${m}m ${sec}s`;
+    }
+
+    function formatDateTime(dt) {
+        if (!dt) return "N/A";
+        try {
+            const d = new Date(dt);
+            if (Number.isNaN(d.getTime())) return String(dt);
+            return d.toLocaleString();
+        } catch {
+            return String(dt);
+        }
     }
 
     // Only create the hook for the active template when editing
@@ -452,11 +464,30 @@ export default function Templates() {
                                         ).toLocaleDateString()}
                                     </span>
                                     <span className="auto-timer">
-                                        {autoCountdowns[template.id]
+                                        {template.auto?.active ? (
+                                            <Tippy
+                                            content={autoRunSettings[
+                                                template.id
+                                            ]?.active && (
+                                                <>
+                                                    <strong>Last run at:{" "} </strong><br />
+                                                    {formatDateTime(
+                                                        template.last_auto_run_at,
+                                                    )}
+                                                </>
+                                            )}
+                                            >
+                                            <span className={autoRunSettings[template.id]?.active ? "active" : ""}>
+                                                {autoCountdowns[template.id]
                                             ? formatCountdown(
                                                   autoCountdowns[template.id],
                                               )
                                             : "Paused"}
+                                            </span>
+                                        </Tippy>) : (
+                                            "Inactive"
+                                        )}
+                                        
                                     </span>
                                     <div className="template-actions">
                                         <button
