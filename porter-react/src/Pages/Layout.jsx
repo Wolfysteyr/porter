@@ -49,6 +49,7 @@ export default function Layout(){
                     <>
                         <Link to="/tqb" className="nav-link">Table Query Builder</Link>
                         <Link to="/templates" className="nav-link">Templates</Link>
+                        {user.admin === 1 && <Link to="/databases" className="nav-link">Databases</Link>}
                     </>
                     }
                     </div>

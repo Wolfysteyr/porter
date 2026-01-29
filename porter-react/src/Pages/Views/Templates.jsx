@@ -134,8 +134,8 @@ export default function Templates() {
         const scheduleFetch = () => {
             timeoutId = setTimeout(async () => {
                 await fetchTemplates();
-                scheduleFetch(); // Schedule the next fetch exactly 60 seconds after this one completes
-            }, 60_000);
+                scheduleFetch(); // Schedule the next fetch exactly 30 seconds after this one completes
+            }, 30_000);
         };
 
         // Initial delay of 5 seconds before the first fetch
@@ -157,22 +157,8 @@ export default function Templates() {
         qb.rowLimit,
     ]);
 
-    // Fetch databases for side menu
     useEffect(() => {
-        async function fetchDatabases() {
-            try {
-                const response = await fetch(`${appAddress}/api/databases`, {
-                    method: "GET",
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        Accept: "application/json",
-                    },
-                });
-                const data = await response.json();
-            } catch (e) {}
-        }
         document.title = "Porter - Query Templates";
-        fetchDatabases();
     }, [appAddress, token]);
 
     // show redirected message if any
@@ -183,7 +169,16 @@ export default function Templates() {
 
             window.history.replaceState({}, document.title);
         }
-    }, [location.state]);
+        if (state?.template) {
+            const t = templates.find((x) => x.id === state.template);
+            if (t) {
+                openEditModal(t);
+                window.history.replaceState({}, document.title);
+                location.state = {};
+            }
+            
+        }
+    }, [location, templates]);
 
     // fetch template auto run settings from template
     useEffect(() => {
@@ -256,6 +251,7 @@ export default function Templates() {
             );
             if (response.ok) {
                 openMessageModal("Auto run settings saved successfully");
+                fetchTemplates();
             } else {
                 openMessageModal("Failed to save auto run settings", false);
             }
@@ -535,7 +531,7 @@ export default function Templates() {
                                                     className="edit-button"
                                                 >
                                                     <img
-                                                        src="public/icons/pencil.png"
+                                                        src="icons/pencil.png"
                                                         alt="Edit"
                                                         style={{ maxWidth: "20px" }}
                                                     />
@@ -548,7 +544,7 @@ export default function Templates() {
                                                     className="delete-button"
                                                 >
                                                     <img
-                                                        src="public/icons/close.png"
+                                                        src="icons/close.png"
                                                         alt="Delete"
                                                         style={{ maxWidth: "20px" }}
                                                     />
@@ -574,7 +570,7 @@ export default function Templates() {
                                             >
                                                 {autoRunSettings[template.id]?.active ? (
                                                     <img
-                                                        src="public/icons/pause.png"
+                                                        src="icons/pause.png"
                                                         alt="Pause"
                                                         style={{
                                                             maxWidth: "16px",
@@ -583,7 +579,7 @@ export default function Templates() {
                                                     />
                                                 ) : (
                                                     <img
-                                                        src="public/icons/play-button.png"
+                                                        src="icons/play-button.png"
                                                         alt="Resume"
                                                         style={{
                                                             maxWidth: "16px",
