@@ -733,6 +733,19 @@ h6{
   }
 }
 
+.template-group {
+  margin-bottom: 2rem;
+  border: #ffffff 2px solid;
+  border-radius: 8px;
+}
+
+.template-group-title{
+  font-size: x-large;
+  font-weight: 600;
+  margin-left: 1rem;
+  text-align: left;
+}
+
 .template-list {
   list-style: none;
   padding: 0;
