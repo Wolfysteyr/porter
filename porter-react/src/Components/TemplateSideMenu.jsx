@@ -5,7 +5,12 @@ import FRRuleField from "./FRRuleField.jsx";
 import LimitOffsetRuleField from "./LimitOffsetRuleField.jsx";
 import ColumnNameChange from "./ColumnNameChange.jsx";
 
+
+    // all logic is handled by the useQueryBuilder hook, this is just the visual component
+
 export default function TemplateSideMenu(props) {
+
+    // Destructure all props
     const {
         isMenuOpen,
         selectedTable,
@@ -74,8 +79,6 @@ export default function TemplateSideMenu(props) {
         template,
     } = props;
 
-    // All rule-related state and handlers are now controlled by parent (TQB) and passed as props.
-    // Remove local state for rules and UI toggles.
 
     return (
         <>

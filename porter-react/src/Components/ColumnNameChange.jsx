@@ -2,6 +2,10 @@ import React, { useEffect, useState, useContext } from 'react';
 import Select from 'react-select';
 import { AppContext } from '../Context/AppContext';
 
+// Component for changing column names during export
+// Supports both CSV (manual entry) and DB (select from target table columns) modes
+// this was a head scratcher when i was implementing it but now it makes sense
+
 export default function ColumnNameChange({
     nameChange,
     index,
@@ -15,14 +19,19 @@ export default function ColumnNameChange({
     exportType,
 
 }) {
+    // Context for app-wide settings
     const { appAddress, token } = useContext(AppContext);
     const [originalName, setOriginalName] = useState(nameChange.original ?? '');
+
+    // for CSV mode
     const [newNameCSV, setNewNameCSV] = useState(nameChange.new ?? '');
     
 
-   const [dbColumns, setDbColumns] = useState([]);
+    // for DB mode
+    const [dbColumns, setDbColumns] = useState([]);
     const [targetColumn, setTargetColumn] = useState('');
 
+    // ensure sourceColumns is always an array
     const sourceCols = Array.isArray(sourceColumns) ? sourceColumns : [];
 
     // keep local fields in sync if parent updates nameChange
@@ -40,7 +49,6 @@ export default function ColumnNameChange({
     
     // sync local edits back to parent state — avoid infinite loop by limiting when we push changes
     useEffect(() => {
-        // CSV mode: only persist originalName immediately (select). Commit "new" onBlur to avoid rapid
         // parent updates while typing which cause re-renders/reset and can loop.
         if (!exportType) {
             if (typeof handleColumnNameChange === 'function') {
@@ -70,12 +78,13 @@ export default function ColumnNameChange({
         index,
         handleColumnNameChange,
         nameChange?.original,
-        nameChange?.new
+        nameChange?.new 
     ]);
 
 
     useEffect(() => {
         // fetch columns when targetTable changes
+        // again, can I stop writing useEffects? just make it a function please
         const fetchColumns = async () => {
             if (targetDatabase && targetTable) {
                 try {
@@ -100,7 +109,7 @@ export default function ColumnNameChange({
             }
         };
         fetchColumns();
-    }, [targetTable, targetDatabase, appAddress, token, toggleLoading]);
+    }, [targetTable, targetDatabase, appAddress, token, toggleLoading]); 
 
     return (
             <div className="column-name-change-field">
@@ -184,4 +193,5 @@ export default function ColumnNameChange({
                 </div>
             </div>
         );
+        // ^ holy hierarchy 
 }

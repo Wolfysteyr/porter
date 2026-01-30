@@ -4,11 +4,13 @@ export const AppContext = createContext();
 
 export default function AppProvider({children}){
 
-    const appAddress = import.meta.env.APP_URL || "http://localhost:8000";
+    const appAddress = import.meta.env.APP_URL || "http://localhost:8000"; // Base URL for API requests, default to localhost if not set
 
-    const [token, setToken] = useState(localStorage.getItem('token'));
+    // State for authentication token and user info
+    const [token, setToken] = useState(localStorage.getItem('token')); // initialize token from localStorage
     const [user, setUser] = useState(null);
 
+    // Fetch user data when token changes
     async function getUser() {
         const res = await fetch('api/user', {
             headers:{
@@ -28,18 +30,19 @@ export default function AppProvider({children}){
     }
 
     useEffect(()=>{
-        console.log('effect ran')
+        // debug, been here since forever, might as well keep it, who the hell goes into console anyway
+        console.log('effect ran');
         if(token){
             getUser();
         } else {
-            console.log("nothing")
+            console.log("nothing");
         }
     }, [token]);
 
 
     return (
-        <AppContext.Provider value={{token, setToken, user, setUser, appAddress}}>
-            {children}
+        <AppContext.Provider value={{token, setToken, user, setUser, appAddress}}> 
+            {children} 
         </AppContext.Provider>
     );
 }

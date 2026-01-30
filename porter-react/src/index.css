@@ -1,3 +1,12 @@
+/* oh god, the css
+    the fact that i chose this over tailwind makes me question my life choices
+    but at least it's not inline styles :)                        that's a lie i still have some inline styles (because why make a class for one-off styles)
+
+    just ctrl+f what you want to edit because
+    you literally won't know what you are editing unless you are directly looking at the resulting page (because i don't either)
+
+    don't choose to be a full-stack dev kids
+*/
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;

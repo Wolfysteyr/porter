@@ -3,6 +3,7 @@ import Select from "react-select";
 import Tippy from "@tippyjs/react";
 import "tippy.js/dist/tippy.css";
 
+// second contender for smallest file 
 export default function FRRuleField({
     rule,
     index,
@@ -12,13 +13,15 @@ export default function FRRuleField({
     removeFRRule,
     handleFRRuleChange,
 }) {
+
     // compute values selected by other FR rules (exclude current index)
     const selectedValues = new Set(
         FRRules.map((r, i) => (i !== index ? r.find : null)).filter(
-            (v) => v !== null && v !== undefined && v !== "",
+            (v) => v !== null && v !== undefined && v !== "", 
         ),
     );
 
+    // group options by column for ease of use
     const groupedOptions = Object.entries(findOptions || {}).map(
         ([col, vals]) => {
             const opts = (Array.isArray(vals) ? vals : [])
@@ -92,6 +95,7 @@ export default function FRRuleField({
             >
                 ✖
             </button>
+            {/* Select component for 'find' options */}
             <Select
                 options={groupedOptions}
                 value={selectedOption}
@@ -125,6 +129,7 @@ export default function FRRuleField({
                     singleValue: (provided) => ({ ...provided, color: "#fff" }),
                 }}
             />
+            {/* Input field for 'replace' value only shown when 'find' has a value */}
             {rule.find && (
                 <>
                     <input

@@ -6,23 +6,29 @@ import TemplateSideMenu from "../../Components/TemplateSideMenu";
 import { useQueryBuilder } from "../../hooks/useQueryBuilder";
 
 
-
-
-
+// this used to be over 1000 lines of spaghetti code before i realized what business logic is
+// you learn as you go i guess
+// tbh was thinking of just making this a part of Templates.jsx cus the edit there is literally this, would follow the "single page program" idea better
+// but eh, this works for now
 export default function TQB() {
+
+    // get app context values
     const { appAddress, token, user } = useContext(AppContext);
     const navigate = useNavigate();
+    
+    // import custom hook for query builder logic 
     const qb = useQueryBuilder({ appAddress, token, user, navigate });
 
+    // Initial data fetch on mount
     useEffect(() => {
         if (token) {
             qb.getDatabases();
             qb.setSelectedDatabase("");
         }
         qb.handleMenuToggle();
-        // eslint-disable-next-line
     }, [token, appAddress]);
 
+    // Set document title
     useEffect(() => {
         document.title = 'Porter - Table Query Builder';
     }, []);
@@ -48,7 +54,6 @@ export default function TQB() {
             }
         };
         fetchTables();
-        // eslint-disable-next-line
     }, [qb.targetDatabase]);
 
     // Fetch tables for selectedDatabase
@@ -79,7 +84,6 @@ export default function TQB() {
             }
         }
         fetchTables();
-        // eslint-disable-next-line
     }, [token, qb.selectedDatabase, appAddress]);
 
     // Fetch columns for selectedTable
@@ -109,24 +113,23 @@ export default function TQB() {
             }
         }
         fetchTableColumns();
-        // eslint-disable-next-line
     }, [qb.selectedTable, token, appAddress, qb.selectedDatabase]);
 
+    // notify that selection criteria changed, so data needs to be refetched
     useEffect(() => {
         qb.setUpdatedData(true);
-        // eslint-disable-next-line
     }, [qb.selectedCols, qb.foreignKeysSelection, qb.selectedWhere, qb.rowLimit]);
 
-    // TemplateSideMenu logic is now in qb
+    // TemplateSideMenu logic is now in useQueryBuilder hook, visual in TemplateSideMenu component 
     return (
         <>
             <h1 className="title">Table Query Builder </h1>
             <TemplateSideMenu
-                {...qb}
-                handleFetchTableData={qb.handleFetchTableData}
+                {...qb} // spread all qb hook values and functions as props
+                handleFetchTableData={qb.handleFetchTableData} 
                 populateFindOptions={qb.populateFindOptions}
                 handleSaveTemplate={() => {qb.handleSaveTemplate()}}
-                isEditing={false}
+                isEditing={false} // not used in TQB, but is needed in editing templates
             />
             <div className={`main-div`}>
                 {qb.selectedTable && qb.tableData.length > 0 ? (
@@ -155,12 +158,16 @@ export default function TQB() {
                     <p className="no-data-message">No database or table selected.</p>
                 )}
             </div>
+
             {/* Message modal */}
             <Modal isOpen={qb.isMessageModalOpen} onRequestClose={qb.isMessageModalOpen} contentLabel="Message" className={`message-modal ${qb.messageSuccess ? 'success' : 'error'}`} overlayClassName="none">
                 <div style={{ padding: '1rem' }}>
                     <p>{qb.message}</p>
                 </div>
             </Modal>
+            {/* End of Message modal */
+            
+            }
             {/* New Database modal */}
             <Modal 
                 isOpen={qb.toggleNewDBModal} 
@@ -188,6 +195,8 @@ export default function TQB() {
                 <button className="use-button" onClick={qb.handleCreateNewDatabase}>Create</button>
                 <button className="delete-button" onClick={() => qb.setToggleNewDBModal(false)}>Cancel</button>
             </Modal>
+            {/* End of New Database modal */}
+
             {/* Loading modal */}
             <Modal 
                 isOpen={qb.loading} 
@@ -198,6 +207,7 @@ export default function TQB() {
             >
                 <div className="loader"></div>
             </Modal>
+            {/* End of Loading modal */}
         </>
     );
 }

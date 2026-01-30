@@ -5,13 +5,15 @@ import { useNavigate, useLocation } from "react-router-dom";
 import TemplateSideMenu from "../../Components/TemplateSideMenu";
 import { useQueryBuilder } from "../../hooks/useQueryBuilder";
 import Tippy from "@tippyjs/react";
+
 export default function Templates() {
+
     // auto run stuff
-    const [autoRunSettings, setAutoRunSettings] = useState({}); // {[templateId]: {interval: ..., unit: ..., active: ...}}
+    const [autoRunSettings, setAutoRunSettings] = useState({}); // {[templateId]: {schedule: ..., interval: ..., unit: ..., active: ...}}
     const [autoCountdowns, setAutoCountdowns] = useState({}); //
     const [updateCountdown, setUpdateCountdown] = useState(false);
 
-    //UI
+    //UI toggles
     const [toggles, setToggles] = useState({});
 
     // Context and global state
@@ -40,10 +42,7 @@ export default function Templates() {
     const [activeTemplate, setActiveTemplate] = useState(null);
     // const [editShowSuccessGlow, setEditShowSuccessGlow] = useState(false);
 
-    // update countdown every minute to avoid page refresh
-   
-
-    // countdown engine
+    // countdown engine, updates every second
     useEffect(() => {
         setUpdateCountdown(false);
         const timer = setInterval(() => {
@@ -68,6 +67,7 @@ export default function Templates() {
         return () => clearInterval(timer);
     }, [templates, updateCountdown]);
 
+    // time formatter
     function formatCountdown(ms) {
         const s = Math.floor(ms / 1000);
 
@@ -79,6 +79,7 @@ export default function Templates() {
         return `${d}d ${h}h ${m}m ${sec}s`;
     }
 
+    // date time formatter
     function formatDateTime(dt) {
         if (!dt) return "N/A";
         try {
@@ -107,6 +108,7 @@ export default function Templates() {
         }
     }, [isEditModalOpen, token, appAddress]);
 
+    // Fetch templates from API  
     async function fetchTemplates() {
         try {
             const response = await fetch(`${appAddress}/api/query-templates`, {
@@ -123,27 +125,22 @@ export default function Templates() {
         }
     }
 
-    // Fetch templates from API
+    // Fetch templates from API on mount
     useEffect(() => {
         fetchTemplates();
     }, [appAddress, token]);
 
+
+    // refetche templates every 30 seconds to update auto run statuses
     useEffect(() => {
         let timeoutId;
-
         const scheduleFetch = () => {
             timeoutId = setTimeout(async () => {
                 await fetchTemplates();
                 scheduleFetch(); // Schedule the next fetch exactly 30 seconds after this one completes
             }, 30_000);
         };
-
-        // Initial delay of 5 seconds before the first fetch
-        timeoutId = setTimeout(async () => {
-            await fetchTemplates();
-            scheduleFetch();
-        }, 15_000);
-
+        scheduleFetch();
         return () => clearTimeout(timeoutId);
     }, [appAddress, token]);
 
@@ -157,6 +154,7 @@ export default function Templates() {
         qb.rowLimit,
     ]);
 
+    // Set document title
     useEffect(() => {
         document.title = "Porter - Query Templates";
     }, [appAddress, token]);
@@ -166,17 +164,15 @@ export default function Templates() {
         const state = location?.state;
         if (state?.message) {
             openMessageModal(state.message);
-
-            window.history.replaceState({}, document.title);
+            window.history.replaceState({}, document.title); // clear message from history
         }
         if (state?.template) {
             const t = templates.find((x) => x.id === state.template);
             if (t) {
-                openEditModal(t);
-                window.history.replaceState({}, document.title);
+                openEditModal(t); // open edit modal if redirected with template
+                window.history.replaceState({}, document.title); // clear template from history
                 location.state = {};
             }
-            
         }
     }, [location, templates]);
 
@@ -215,11 +211,13 @@ export default function Templates() {
     };
 
     // handle saving auto run settings to backend | reuses existing API endpoint, just updates auto field
+    // inneffcient? maybe. but keeps code simple
     async function handleSaveAutoRunSettings(template) {
         if (autoRunSettings[template.id].schedule !== "every") {
             autoRunSettings[template.id].interval = null;
             autoRunSettings[template.id].unit = null;
         }
+    
         const payload = {
             name: template.name,
             database: template.database,
@@ -271,30 +269,33 @@ export default function Templates() {
         qb.handleFetchTableData(template.table);
     }
 
+    // Close edit modal
     function closeEditModal() {
         setIsEditModalOpen(false);
         setActiveTemplate(null);
         fetchTemplates();
     }
 
-    // open modal instead of calling window.confirm directly
+    // open delete confirmation modal
     function openDeleteModal(template) {
         setTemplateToDelete(template);
         setIsDeleteModalOpen(true);
     }
 
+    // close delete confirmation modal
     function closeDeleteModal() {
         setTemplateToDelete(null);
         setIsDeleteModalOpen(false);
     }
 
+    // open message modal (just a small notification)
     function openMessageModal(msg, success = true) {
         setMessage(msg);
         setMessageSuccess(success);
         setIsMessageModalOpen(true);
         setTimeout(() => {
             setIsMessageModalOpen(false);
-        }, 3000);
+        }, 3000); // auto close after 3 seconds
     }
 
     // Toggle functions for UI elements
@@ -311,6 +312,7 @@ export default function Templates() {
     const isToggled = (id) => !!toggles[id];
 
     // perform the actual delete when user confirms in modal
+    // maybe change to soft delete later? (for history)
     async function confirmDelete() {
         if (!templateToDelete) return;
 
@@ -338,15 +340,16 @@ export default function Templates() {
         closeDeleteModal();
     }
 
-    // placeholder edit handler (keep or implement)
+    // open edit modal for template
     function handleEdit(id) {
         const t = templates.find((x) => x.id === id);
         if (!t) return;
         openEditModal(t);
     }
 
+    // use a template (export/download)
     async function handleUseTemplate(template) {
-        // navigate('/export', { state: { template } });
+        // debug
         console.log("Using template:", template);
         try {
             toggleLoading(true);
@@ -354,10 +357,11 @@ export default function Templates() {
             setTimeout(() => {
                 if (loading) {
                     setLoadingMessage(
-                        "That's a lot of data! This may take a while...",
+                        "That's a lot of data! This may take a while...", // when exporting large datasets
                     );
                 }
-            }, 5000);
+            }, 10000);
+
             const response = await fetch(`${appAddress}/api/export`, {
                 method: "POST",
                 headers: {
@@ -372,6 +376,8 @@ export default function Templates() {
                 console.error("Export failed with status:", response.status);
                 throw new Error("Failed to export data");
             }
+
+            // create download for CSV 
             if (!template.export.exportType) {
                 const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
@@ -387,11 +393,14 @@ export default function Templates() {
                         message: `Export successful! Exported to ${template.name + "_export.csv"}`,
                     },
                 });
+                // for database exports, show summary message (rows inserted/skipped)
             } else {
                 const blob = await response.json();
                 navigate("/templates", {
                     state: {
-                        message: `Export successful! Exported to  ${template.export.targetDatabase}, table ${template.export.targetTable}. ${blob.total_inserted} rows inserted, ${blob.total_skipped} rows skipped.`,
+                        message: `Export successful! Exported to  ${template.export.targetDatabase}, 
+                        table ${template.export.targetTable}. ${blob.total_inserted} rows inserted, 
+                        ${blob.total_skipped} rows skipped.`,
                     },
                 });
             }
@@ -409,12 +418,15 @@ export default function Templates() {
     );
 
     // Group templates by database
+    // may change later to allow custom grouping/sorting
     const groupedTemplates = visibleTemplates.reduce((acc, t) => {
         if (!acc[t.database]) acc[t.database] = [];
         acc[t.database].push(t);
         return acc;
     }, {});
 
+
+    // need to solve issue of button icons not loading from public folder when redirected from home with template
     return (
         <>
             <h1 className="title">Query Templates</h1>
@@ -696,6 +708,7 @@ export default function Templates() {
                     <p>{message}</p>
                 </div>
             </Modal>
+            {/* End of Message modal */}
 
             {/* Delete confirmation modal */}
             <Modal
@@ -733,9 +746,8 @@ export default function Templates() {
                     </div>
                 </div>
             </Modal>
-
-            {/* Template side menu */}
-
+            {/* End of Delete confirmation modal */}
+            
             {/* Edit template modal */}
             <Modal
                 isOpen={isEditModalOpen}
@@ -796,6 +808,8 @@ export default function Templates() {
                 </div>
             </Modal>
 
+            {/* Edit template side menu */}
+
             {isEditModalOpen && (
                 <div
                     style={{
@@ -818,6 +832,8 @@ export default function Templates() {
                 </div>
             )}
 
+            {/* End of Edit and template side menu */}
+
             {/* Loading modal */}
             <Modal
                 isOpen={loading}
@@ -828,6 +844,7 @@ export default function Templates() {
                 <p>{loadingMessage || "Loading, please wait..."}</p>
                 <div className="loader"></div>
             </Modal>
+            {/* End of Loading modal */}
         </>
     );
 }

@@ -1,5 +1,12 @@
-import { useState, useEffect, useCallback, useRef, act } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
+// this place is a mess but
+// it has all the state and logic for the TQB component
+// i tried to organize it as best as possible into sections with comments
+// but it could still use some refactoring and cleanup
+
+// pretty sure like a 5th of this code is unused or duped, but I'm literally too lazy to go back and forth and clean it up right now
+// but hey, it works 
 export function useQueryBuilder({
     appAddress,
     token,
@@ -9,15 +16,17 @@ export function useQueryBuilder({
     closeEditModal = () => {},
 }) {
     // UI
-    const [loading, toggleLoading] = useState(false);
-    const [showWarning, setShowWarning] = useState(false);
-    const [showSuccessGlow, setShowSuccessGlow] = useState(false);
-    const [showColumnWindow, setShowColumnWindow] = useState(false);
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [menus, setMenus] = useState({});
-    const [toggleNewDBModal, setToggleNewDBModal] = useState(false);
-    const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
-    const [toggles, setToggles] = useState({});
+    const [loading, toggleLoading] = useState(false); // Global loading state
+    const [showWarning, setShowWarning] = useState(false); // Show warning modal (to tell user to refresh table data)
+    const [showSuccessGlow, setShowSuccessGlow] = useState(false); // Show success glow on data fetch
+    const [showColumnWindow, setShowColumnWindow] = useState(false); // Show column name changes window
+    const [isMenuOpen, setIsMenuOpen] = useState(false); // Side menu open/close
+    const [menus, setMenus] = useState({}); // Individual menu toggles (can't this be used for isMenuOpen and showcolumnWindow too? I'm too scared to address it right now)
+    const [toggleNewDBModal, setToggleNewDBModal] = useState(false); // New DB modal
+    const [isMessageModalOpen, setIsMessageModalOpen] = useState(false); // Message modal
+    const [toggles, setToggles] = useState({}); // Generic toggles for various UI elements
+
+    // Selected Foreign Keys, used for managing FK selections AND showing the correct checkboxes (making the old UI column obsolete)
     const [selectedRFKs, setSelectedRFKs] = useState(() => {
         if (!Array.isArray(template.query?.foreign_keys)) return {};
 
@@ -34,16 +43,18 @@ export function useQueryBuilder({
         }, {});
     });
 
-    const isHydratingTemplate = useRef(false);
+    const isHydratingTemplate = useRef(false); // To prevent overwriting user changes when template prop changes
 
-    // Modal & Message
+    // Message, used for showing success/error messages to the user
     const [message, setMessage] = useState("");
     const [messageSuccess, setMessageSuccess] = useState(false);
 
     // Database Connection
-    const [databases, setDatabases] = useState([]);
-    const [newDBName, setNewDBName] = useState("");
-    const [newDBdescription, setNewDBdescription] = useState("");
+    const [databases, setDatabases] = useState([]); // Available external databases
+
+    // New Database Connection fields
+    const [newDBName, setNewDBName] = useState(""); 
+    const [newDBdescription, setNewDBdescription] = useState(""); 
     const [newDBDriver, setNewDBDriver] = useState("mysql");
     const [newDBHost, setNewDBHost] = useState("localhost");
     const [newDBPort, setNewDBPort] = useState("3306");
@@ -51,52 +62,43 @@ export function useQueryBuilder({
     const [newDBPassword, setNewDBPassword] = useState("");
 
     // Query Builder
-    const [tables, setTables] = useState([]);
+    const [tables, setTables] = useState([]); // Tables in selected database
     const [selectedDatabase, setSelectedDatabase] = useState(
         template.database || "",
     );
-    const [selectedTable, setSelectedTable] = useState(template.table || "");
-    const [rowLimit, setRowLimit] = useState("");
-    const [selectedCols, setSelectedCols] = useState(
-        template.query?.columns || [],
-    );
-    const [selectedWhere, setSelectedWhere] = useState(
-        template.query?.where || [],
-    );
-    const [foreignKeysSelection, setForeignKeysSelection] = useState(
-        template.query?.foreign_keys || [],
-    );
-    const [tableData, setTableData] = useState([]);
-    const [editTableData, setEditTableData] = useState([]);
-    const [tableCols, setTableCols] = useState([]);
-    const [foreignKeys, setForeignKeys] = useState([]);
-    const [updatedData, setUpdatedData] = useState(false);
+    const [selectedTable, setSelectedTable] = useState(template.table || ""); // Selected table in selected database
+    
+    const [rowLimit, setRowLimit] = useState(""); // Row limit for data preview
+    const [selectedCols, setSelectedCols] = useState(template.query?.columns || []); // Selected columns for query
+    const [selectedWhere, setSelectedWhere] = useState(template.query?.where || []); // Selected where conditions for query
+    const [foreignKeysSelection, setForeignKeysSelection] = useState(template.query?.foreign_keys || []); // Selected foreign keys for query
 
-    // Template/Export/Automation
-    const [templateName, setTemplateName] = useState(template.name || "");
-    const [templateNameErr, setTemplateNameErr] = useState(false);
-    const [templateNameErrMsg, setTemplateNameErrMsg] = useState("");
-    const [exportType, setExportType] = useState(
-        template.export?.exportType || false,
-    ); // false = CSV, true = SQL
-    const [columnNameChanges, setColumnNameChanges] = useState(
-        template.export?.columnNameChanges || [],
-    );
-    const [FRRules, setFRRules] = useState(
-        template.export?.findReplaceRules || [],
-    );
-    const [limitOffsetRules, setLimitOffsetRules] = useState(
-        template.export?.limitOffsetRules || [],
-    );
+    // Table Data Preview
+    const [tableData, setTableData] = useState([]); // Preview data for selected table
+    const [editTableData, setEditTableData] = useState([]); // I think this is obsolete now
+    const [tableCols, setTableCols] = useState([]); // Columns in selected table
+    const [foreignKeys, setForeignKeys] = useState([]); // Foreign keys in selected table
+    const [updatedData, setUpdatedData] = useState(false); // Flag to indicate if data has been updated and needs refetching
+
+    // Query builder rules and template info
+
+    // Template Info
+    const [templateName, setTemplateName] = useState(template.name || ""); // Template name
+    const [templateNameErr, setTemplateNameErr] = useState(false); // Template name error flag, should just make it check if the msg is empty instead
+    const [templateNameErrMsg, setTemplateNameErrMsg] = useState(""); // Template name error message (actually is used by other things too but whatever)
+    
+    // Export Rules
+    const [exportType, setExportType] = useState(template.export?.exportType || false); // false = CSV, true = SQL
+    const [columnNameChanges, setColumnNameChanges] = useState(template.export?.columnNameChanges || []); // Column name changes 
+    const [FRRules, setFRRules] = useState(template.export?.findReplaceRules || []); // Find-replace rules 
+    const [limitOffsetRules, setLimitOffsetRules] = useState(template.export?.limitOffsetRules || []); // Limit-offset rules 
+    const [findOptions, setFindOptions] = useState({}); // Find options for find-replace rules
+    const [findOptionsLoading, setFindOptionsLoading] = useState(false); // Loading state for populating find options
 
     // Export Target
-    const [targetDatabase, setTargetDatabase] = useState("");
-    const [targetTable, setTargetTable] = useState("");
-    const [dbTables, setDbTables] = useState([]);
-
-    // Find options for find-replace rules
-    const [findOptions, setFindOptions] = useState({});
-    const [findOptionsLoading, setFindOptionsLoading] = useState(false);
+    const [targetDatabase, setTargetDatabase] = useState(template.export?.targetDatabase || ""); // Target database for export
+    const [targetTable, setTargetTable] = useState(template.export?.targetTable || ""); // Target table for export
+    const [dbTables, setDbTables] = useState([]); // Tables in target database
 
     // Keep internal state in sync when the provided `template` changes
     useEffect(() => {
@@ -163,7 +165,26 @@ export function useQueryBuilder({
               )
             : 0;
 
-    // Logic functions (moved from TQB.jsx)
+    // BASIC FUNCTIONS
+
+    // Fetch databases
+    async function getDatabases() {
+        try {
+            const response = await fetch(
+                `${appAddress}/api/databases/external`,
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                },
+            );
+            if (!response.ok) throw new Error(`Status ${response.status}`);
+            const data = await response.json();
+            setDatabases(Array.isArray(data) ? data : []);
+        } catch (err) {
+            setDatabases([]);
+        }
+    }
+
+    // TEMPLATE FUNCTIONS \\
 
     // Save template logic
     function handleSaveTemplate() {
@@ -205,7 +226,10 @@ export function useQueryBuilder({
             query.where = selectedWhere;
         if (Object.keys(query).length === 0) query.columns = ["*"];
 
-        let eggsport = {
+        // Construct export object
+
+        // export values
+        let eggsport = { // don't ask
             exportType,
             targetDatabase,
             targetTable,
@@ -214,6 +238,7 @@ export function useQueryBuilder({
             columnNameChanges,
         };
 
+        // auto values made null to not break things, is set by user in templates later
         let auto = {
             schedule: null,
             interval: null,
@@ -221,17 +246,18 @@ export function useQueryBuilder({
             active: false,
         };
 
+        // Construct payload
         const payload = {
             name: templateName,
             database: selectedDatabase,
             table: selectedTable,
             query,
-            export: eggsport,
+            export: eggsport, //again, don't ask
             user_id: user.id,
             auto: auto,
         };
 
-        if (template.id) {
+        if (template.id) { // wow i wonder if the newly created template has an id yet
             fetch(`${appAddress}/api/query-templates/${template.id}`, {
                 method: "PUT",
                 headers: {
@@ -290,25 +316,8 @@ export function useQueryBuilder({
         }
     }
 
-    // Fetch databases
-    async function getDatabases() {
-        try {
-            const response = await fetch(
-                `${appAddress}/api/databases/external`,
-                {
-                    headers: { Authorization: `Bearer ${token}` },
-                },
-            );
-            if (!response.ok) throw new Error(`Status ${response.status}`);
-            const data = await response.json();
-            setDatabases(Array.isArray(data) ? data : []);
-        } catch (err) {
-            setDatabases([]);
-        }
-    }
-
     // Fetch tables for a given external database name (used by targetDatabase)
-    useEffect(() => {
+    useEffect(() => { // does it have to be useEffect? could it be a function called when targetDatabase changes? i dont car
         let cancelled = false;
         async function fetchDbTables() {
             if (!targetDatabase) {
@@ -347,7 +356,7 @@ export function useQueryBuilder({
     }, [targetDatabase, token, appAddress]);
 
     // Fetch tables when selectedDatabase changes
-    useEffect(() => {
+    useEffect(() => { // again, not sure if useEffect is necessary here
         let cancelled = false;
         async function fetchTablesForSelectedDb() {
             if (!selectedDatabase || !token) {
@@ -389,7 +398,7 @@ export function useQueryBuilder({
     }, [selectedDatabase, token, appAddress]);
 
     // Fetch columns and foreign keys when selectedTable changes
-    useEffect(() => {
+    useEffect(() => { // again with the useEffect
         let cancelled = false;
         async function fetchTableColumns() {
             if (!selectedTable) return;
@@ -433,7 +442,8 @@ export function useQueryBuilder({
     }, [selectedTable, token, selectedDatabase, appAddress]);
 
     // Fetch preview/rows for the currently selected table
-    async function handleFetchTableData() {
+    // amazing, it's not a useEffect!
+    async function handleFetchTableData() { 
         if (!selectedTable) return;
         try {
             console.log("Fetching table data for", selectedTable);
@@ -480,57 +490,6 @@ export function useQueryBuilder({
         }
     }
 
-    // Create new database connection
-    async function handleCreateNewDatabase() {
-        toggleLoading(true);
-        const payload = {
-            name: newDBName,
-            description: newDBdescription,
-            driver: newDBDriver,
-            host: newDBHost,
-            port: newDBPort,
-            username: newDBUsername,
-            password: newDBPassword,
-        };
-        try {
-            const response = await fetch(
-                `${appAddress}/api/databases/external`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify(payload),
-                },
-            );
-            if (!response.ok) {
-                const errorData = await response.json();
-                const errorMsg = errorData?.message || "An error occurred";
-                throw new Error(errorMsg);
-            }
-            const data = await response.json();
-            await getDatabases();
-            setSelectedDatabase(data.name);
-            setToggleNewDBModal(false);
-            showMessage("Database created successfully!", true);
-        } catch (error) {
-            showMessage(`Error creating new database: ${error.message}`, false);
-        } finally {
-            toggleLoading(false);
-        }
-    }
-
-    // Show message modal
-    function showMessage(msg, success) {
-        setMessage(msg);
-        setMessageSuccess(success);
-        setIsMessageModalOpen(true);
-        setTimeout(() => {
-            setIsMessageModalOpen(false);
-        }, 3000);
-    }
-
     // Toggle export type and reset column name changes
     const toggleExportType = () => {
         setExportType((prev) => !prev);
@@ -543,18 +502,7 @@ export function useQueryBuilder({
         }
     };
 
-    // Toggle functions for UI elements
-    const toggleUI = useCallback((id) => {
-        setToggles((prev) => ({ ...prev, [id]: !prev[id] }));
-        // debug
-        console.log("Toggles after toggleUI:", {
-            ...toggles,
-            [id]: !toggles[id],
-        });
-    }, []);
-    // backward compatible alias
-    const isToggled = (id) => !!toggles[id];
-
+       
     // Functions for managing export rules
     const addFRRule = () =>
         setFRRules((prev) => [...prev, { find: "", replace: "" }]);
@@ -644,12 +592,6 @@ export function useQueryBuilder({
         } finally {
             setFindOptionsLoading(false);
         }
-    };
-
-    const handleChange = (col) => {
-        setSelectedCols((prev) =>
-            prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col],
-        );
     };
 
     const WHERE_OPERATORS = [
@@ -797,6 +739,81 @@ export function useQueryBuilder({
         });
     }
 
+    // DATABASE FUNCTIONS \\
+
+    // Create new database connection
+    async function handleCreateNewDatabase() {
+        toggleLoading(true);
+        const payload = {
+            name: newDBName,
+            description: newDBdescription,
+            driver: newDBDriver,
+            host: newDBHost,
+            port: newDBPort,
+            username: newDBUsername,
+            password: newDBPassword,
+        };
+        try {
+            const response = await fetch(
+                `${appAddress}/api/databases/external`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify(payload),
+                },
+            );
+            if (!response.ok) {
+                const errorData = await response.json();
+                const errorMsg = errorData?.message || "An error occurred";
+                throw new Error(errorMsg);
+            }
+            const data = await response.json();
+            await getDatabases();
+            setSelectedDatabase(data.name);
+            setToggleNewDBModal(false);
+            showMessage("Database created successfully!", true);
+        } catch (error) {
+            showMessage(`Error creating new database: ${error.message}`, false);
+        } finally {
+            toggleLoading(false);
+        }
+    }
+    
+    // UI FUNCTIONS \\
+
+    // Handle column selection changes
+    const handleChange = (col) => {
+        setSelectedCols((prev) =>
+            prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col],
+        );
+    };
+
+    // Show message modal
+    function showMessage(msg, success) {
+        setMessage(msg);
+        setMessageSuccess(success);
+        setIsMessageModalOpen(true);
+        setTimeout(() => {
+            setIsMessageModalOpen(false);
+        }, 3000); // Auto-close after 3 seconds
+    }
+
+    // Toggle functions for UI elements
+    const toggleUI = useCallback((id) => {
+        setToggles((prev) => ({ ...prev, [id]: !prev[id] }));
+        // debug
+        console.log("Toggles after toggleUI:", {
+            ...toggles,
+            [id]: !toggles[id],
+        });
+    }, []);
+
+    // backward compatible alias
+    const isToggled = (id) => !!toggles[id];
+
     // Handle selection of new database
     function handleNewDatabase($database) {
         if ($database !== "New Database") {
@@ -929,6 +946,8 @@ export function useQueryBuilder({
         editTableData,
         populateFindOptions,
         toggleLoading,
-        template
+        template,
     };
+
+    // 115 lines of vars lol
 }

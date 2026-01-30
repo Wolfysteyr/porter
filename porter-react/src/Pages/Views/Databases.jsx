@@ -3,9 +3,17 @@ import Modal from "react-modal";
 import { AppContext } from "../../Context/AppContext";
 Modal.setAppElement("#root");
 
+
+// WHY THE HELL IS THIS SO BIG ITS JUST TO DISPLAY A LIST OF DATABASES AND BASIC CRUD OPERATIONS
+// i need to learn how to code better ui's i swear
+
+// later gotta add ability to let admins let specific users use specific databases too probably
 export default function Databases() {
+
+    // get app context values
     const { appAddress, token } = useContext(AppContext);
 
+    // Databases list, you know, the entire point of this page
     const [databases, setDatabases] = useState([]);
 
     // Delete modal state
@@ -33,11 +41,7 @@ export default function Databases() {
     const [loading, toggleLoading] = useState(true);
     const [loadingMessage, setLoadingMessage] = useState("");
     
-
-
-
-    // Fetch databases
-
+    // Fetch databases function
     const fetchDatabasesCb = React.useCallback(
         async function fetchDatabases() {
             if (!token) return;
@@ -67,6 +71,7 @@ export default function Databases() {
         [appAddress, token],
     );
 
+    // Initial fetch of databases and set page title
     useEffect(() => {
         fetchDatabasesCb();
         document.title = "Porter - Databases";
@@ -82,10 +87,12 @@ export default function Databases() {
     const [newDBUsername, setNewDBUsername] = useState("");
     const [newDBPassword, setNewDBPassword] = useState("");
 
+    // Open create modal
     function openCreateModal() {
         setToggleNewDBModal(true);
     }
 
+    // Handle create new database
     async function handleCreateNewDatabase() {
         if (!token) return;
         const payload = {
@@ -123,6 +130,7 @@ export default function Databases() {
         }
     }
 
+    // Message modal helper
     function openMessageModal(msg, success = true) {
         setMessage(msg);
         setMessageSuccess(success);
@@ -130,16 +138,19 @@ export default function Databases() {
         setTimeout(() => setIsMessageModalOpen(false), 3000);
     }
 
+    // Delete modal helpers
     function openDeleteModal(db) {
         setDbToDelete(db);
         setIsDeleteModalOpen(true);
     }
 
+    // Close delete modal
     function closeDeleteModal() {
         setDbToDelete(null);
         setIsDeleteModalOpen(false);
     }
 
+    // Confirm delete
     async function confirmDelete() {
         if (!dbToDelete || !token) return;
         try {
@@ -166,6 +177,7 @@ export default function Databases() {
         }
     }
 
+    // Edit modal helpers
     function openEditModal(db) {
         setEditId(db.id);
         setEditName(db.name ?? "");
@@ -180,11 +192,13 @@ export default function Databases() {
         setIsEditModalOpen(true);
     }
 
+    // Close edit modal
     function closeEditModal() {
         setIsEditModalOpen(false);
         setEditId(null);
     }
 
+    // Save edited database
     async function handleSaveEditedDb() {
         if (!editId || !token) return;
         const payload = {
@@ -223,6 +237,8 @@ export default function Databases() {
         }
     }
 
+    // Helper to get DB image based on driver
+    // kinda proud of this ngl
     function handleDBImage(driver) {
         switch (driver) {
             case "mysql":
@@ -252,7 +268,7 @@ export default function Databases() {
             </div>
             <div className="main-div">
                 {databases.length === 0 ? (
-                    <p>No external databases configured.</p>
+                    <p>No external databases configured.</p> 
                 ) : (
                     <>
                         <div className="db-grid">
@@ -325,6 +341,7 @@ export default function Databases() {
                     <p>{message}</p>
                 </div>
             </Modal>
+            {/* end of Message modal */}
 
             {/* New Database modal */}
             <Modal
@@ -394,6 +411,7 @@ export default function Databases() {
                     Cancel
                 </button>
             </Modal>
+            {/* end of New Database modal */}
 
             {/* Delete confirmation modal */}
             <Modal
@@ -431,6 +449,7 @@ export default function Databases() {
                     </div>
                 </div>
             </Modal>
+            {/* end of Delete confirmation modal */}
 
             {/* Edit modal */}
             <Modal
@@ -507,6 +526,7 @@ export default function Databases() {
                     Cancel
                 </button>
             </Modal>
+            {/* end of Edit modal */}
 
             {/* Loading modal */}
             <Modal
@@ -518,6 +538,11 @@ export default function Databases() {
                         <p>{loadingMessage || "Loading, please wait..."}</p>
                         <div className="loader"></div>
             </Modal>
+
+            {/* End of Loading modal */}
         </>
     );
+
+    // ohh it's this big because of the formatting of the modals
+    // stupid prettier
 }

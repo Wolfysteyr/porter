@@ -6,13 +6,16 @@ import { useState } from "react";
 import { PieChart, pieArcLabelClasses } from "@mui/x-charts/PieChart";
 
 export default function Home() {
-    const { appAddress, token } = useContext(AppContext);
 
+    // get appAddress, user, and token from context
+    const { appAddress, token } = useContext(AppContext);
+    const { user } = useContext(AppContext);
+
+    // state for templates and databases, used in dashboard
     const [templates, setTemplates] = useState([]);
     const [databases, setDatabases] = useState([]);
 
-    const { user } = useContext(AppContext);
-
+    // fetch templates and databases on mount or when user/appAddress/token changes
     useEffect(() => {
         document.title = "Porter";
         // get templates for user dashboard
@@ -44,7 +47,8 @@ export default function Home() {
                 setTemplates([]);
             }
         }
-
+        
+        // get databases for metrics
         async function fetchDatabases() {
             try {
                 const response = await fetch(
@@ -70,7 +74,9 @@ export default function Home() {
         }
     }, [user, appAddress, token]);
 
-    // helper: format "seconds/minutes/hours/days ago"
+
+
+    // helper to format ISO date to "time ago" string
     const formatTimeAgo = (iso) => {
         const ms = Date.parse(iso);
         if (!Number.isFinite(ms)) return "just now";
@@ -86,6 +92,7 @@ export default function Home() {
         return `${days} day${days === 1 ? "" : "s"} ago`;
     };
 
+    // convert hex color to rgb with alpha for pie chart
     const hexToRgba = (hex, alpha) => {
         if (!hex || hex[0] !== "#" || hex.length !== 7) return hex;
         const r = parseInt(hex.slice(1, 3), 16);
@@ -94,6 +101,7 @@ export default function Home() {
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     };
 
+    // pie chart colors
     const palette = [
         "#4E79A7",
         "#2ba2f2",
@@ -107,6 +115,7 @@ export default function Home() {
         "#BAB0AC",
     ];
 
+    // get database labels from templates
     const getDatabaseLabel = (template) => {
         const db = template?.database;
         if (!db) return "Unknown";
@@ -114,12 +123,15 @@ export default function Home() {
         return db.name || db.label || db.database || "Unknown";
     };
 
+    // get template name
     const getTemplateName = (template) =>
         template?.name || template?.title || `Template ${template?.id ?? ""}`;
 
+
+    // prepare data for pie chart
     const databaseTotals = templates.reduce((acc, template) => {
         const label = getDatabaseLabel(template);
-        const isActive = Boolean(template?.auto?.active);
+        const isActive = Boolean(template?.auto?.active); // check if auto run is active, treat missing as inactive
         if (!acc[label]) {
             acc[label] = {
                 total: 0,
@@ -142,8 +154,10 @@ export default function Home() {
         return acc;
     }, {});
 
+    // sort database labels for consistent order
     const databaseLabels = Object.keys(databaseTotals).sort();
 
+    // prepare data arrays for pie chart
     const databaseData = databaseLabels.map((label, index) => ({
         id: label,
         label,
@@ -152,6 +166,7 @@ export default function Home() {
         templates: databaseTotals[label].templates,
     }));
 
+    // prepare active/inactive breakdown data
     const databaseActiveInactiveData = databaseLabels.flatMap(
         (label, index) => {
             const baseColor = palette[index % palette.length];
@@ -176,6 +191,7 @@ export default function Home() {
         },
     );
 
+    // combine into series for pie chart
     const databaseSeries = [
         {
             id: "databases",
@@ -258,6 +274,7 @@ export default function Home() {
                         <div className="metrics-tile">
                             <p className="tile-title">Metrics</p>
                             <div className="tile-content metrics-content">
+                            
                                <PieChart
                                     series={databaseSeries}
                                     width={320}

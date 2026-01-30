@@ -1,8 +1,6 @@
 // OBSOLETE PAGE, ITS ENTIRE LOGIC WAS MOVED TO TQB
-//
-//
-//
-//
+// why keep it? nostalgia I guess
+// good to see how far i've come
 //
 //
 //

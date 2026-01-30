@@ -2,13 +2,17 @@ import { useContext, useState } from "react";
 import {Link, Outlet, useNavigate} from "react-router-dom";
 import { AppContext } from "../Context/AppContext";
 
-
+// Main layout component with header, footer, and navigation
 export default function Layout(){
 
+    // get app context values
     const {user, token, setUser, setToken} = useContext(AppContext);
     const navigate = useNavigate();
+
+    // State for menu visibility
     const [menuVisible, setMenuVisible] = useState(0);
 
+    // Logout handler
     async function handleLogout(e){
         e.preventDefault();
 
@@ -31,6 +35,7 @@ export default function Layout(){
         }
     }
 
+    // Menu toggle handler
     function toggleMenu(){
         if (menuVisible === 1){
             setMenuVisible(2);
@@ -45,14 +50,16 @@ export default function Layout(){
                 <nav>
                     <div>
                     <Link to="/" className="nav-link">Home</Link>
+                    {/* Show additional links if user is logged in */ }
                     {user && 
                     <>
-                        <Link to="/tqb" className="nav-link">Table Query Builder</Link>
+                        <Link to="/tqb" className="nav-link">Table Query Builder</Link> 
                         <Link to="/templates" className="nav-link">Templates</Link>
-                        {user.admin === 1 && <Link to="/databases" className="nav-link">Databases</Link>}
+                        {user.admin === 1 && <Link to="/databases" className="nav-link">Databases</Link>} {/* only show databases link to admins */ }
                     </>
                     }
                     </div>
+                    {/* User info and logout, gotta expand on the little menu */}
                     {user ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <p>
@@ -87,7 +94,7 @@ export default function Layout(){
             </main>
 
             <footer>
-                <p>Copyright© Maksims Carevs, VTL. No rights reserved</p>
+                <p>Copyright© Maksims Carevs, VTL. No rights reserved</p> {/* im so funny */ }
             </footer>
         </>
     );
