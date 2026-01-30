@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\QueryTemplate;
 use Illuminate\Validation\Rule;
 
+// QueryTemplateController manages CRUD operations for QueryTemplate model.
 class QueryTemplateController extends Controller
 {
     public function __construct()
@@ -14,11 +15,13 @@ class QueryTemplateController extends Controller
         // $this->middleware('auth:api');
     }
 
+    // List all query templates
     public function index()
     {
         return response()->json(QueryTemplate::all());
     }
 
+    // Store a new query template
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -44,11 +47,13 @@ class QueryTemplateController extends Controller
         return response()->json($tpl, 201);
     }
 
+    // Show a specific query template
     public function show($id)
     {
         return response()->json(QueryTemplate::findOrFail($id));
     }
 
+    // Update an existing query template
     public function update(Request $request, $id)
     {
         $tpl = QueryTemplate::findOrFail($id);
@@ -80,6 +85,7 @@ class QueryTemplateController extends Controller
         return response()->json($tpl, 200);
     }
 
+    // Delete a query template
     public function destroy($id)
     {
         QueryTemplate::findOrFail($id)->delete();

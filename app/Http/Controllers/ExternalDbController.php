@@ -6,6 +6,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\ExternalDatabase;
 
+// I should probably move half of this to a separate controller/service class. cba
+
+// ExternalDbController manages external database configurations and interactions.
 class ExternalDbController extends Controller
 {
 
@@ -21,6 +24,7 @@ class ExternalDbController extends Controller
             'password' => 'nullable|string|max:255',
         ]);
 
+        // test the provided credentials before saving
         $testConfig = [
             'driver' => $validated['driver'],
             'host' => $validated['host']!= "" ? $validated['host'] : 'localhost',
@@ -36,7 +40,7 @@ class ExternalDbController extends Controller
         ];
 
 
-
+        // use a unique connection name for testing
         $connName = 'test_external_' . uniqid();
         config(["database.connections.$connName" => $testConfig]);
 
@@ -134,7 +138,7 @@ class ExternalDbController extends Controller
         if (!$external) {
             abort(404, 'External database not found');
         }
-
+        // validate input
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:external_databases,name,' . $external->id,
             'description' => 'nullable|string|max:100',
@@ -438,6 +442,7 @@ class ExternalDbController extends Controller
         }
     }
 
+    // List tables in the specified external database
     public function listTables(Request $request)
     {
         $db = ExternalDatabase::where('name', $request->input('name'))->first();
@@ -517,6 +522,7 @@ class ExternalDbController extends Controller
         ]);
     }
 
+    // Get data from a specific table in the external database
     public function getTableData(Request $request, $table)
     {
         $identifier = $request->input('name');
@@ -618,6 +624,7 @@ class ExternalDbController extends Controller
         $aliasMap = [];
         $aliasByParent = [];
 
+        // process foreign key selections
     if (!empty($foreign_keys) && is_array($foreign_keys)) {
             foreach ($foreign_keys as $sel) {
                 $parentCol = $sel['parentCol'] ?? null;
@@ -728,12 +735,13 @@ class ExternalDbController extends Controller
             }
         }
 
-        $limit = intval($limit) > 0 ? intval($limit) : 10;
+        $limit = intval($limit) > 0 ? intval($limit) : 10; 
         $results = $query->limit($limit)->get();
 
         return response()->json(['rows' => $results]);
     }
 
+    // Get column metadata for a specific table in the external database
     public function getTableColumns(Request $request, $table)
     {
         $identifier = $request->input('name');

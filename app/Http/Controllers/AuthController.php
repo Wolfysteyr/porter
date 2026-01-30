@@ -8,9 +8,10 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 
-
+// AuthController handles user registration, login, and logout functionalities.
 class AuthController extends Controller
 {
+    // Register a new user
     public function register(Request $request){
         $fields = $request->validate([
             'name' => 'required|max:255',
@@ -30,6 +31,7 @@ class AuthController extends Controller
         // Create a password reset token
         $token = Password::createToken($user);
 
+        // Send password reset notification to the user
         $user->sendPasswordResetNotification($token);
 
         return [
@@ -38,11 +40,15 @@ class AuthController extends Controller
 
 
     }
+
+    // Login an existing user
     public function login(Request $request){
         $request->validate([
             'email' => 'required|email',
             'password' => 'required'
         ]);
+    
+        // find user by email, then check password
 
         $user = User::where('email', $request->email)->first();
 
@@ -60,7 +66,7 @@ class AuthController extends Controller
                 ]
             ];
         }
-
+            // create token
             $token = $user->createToken($user->name);
 
             return [
@@ -69,6 +75,7 @@ class AuthController extends Controller
             ];
     
     }
+    // Logout the authenticated user
     public function logout(Request $request){
 
         $request->user()->tokens()->delete();

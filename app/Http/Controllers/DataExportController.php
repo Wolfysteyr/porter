@@ -3,29 +3,35 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\ExternalDbController;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Database\ConnectionInterface; // added for defensive checks
 use Illuminate\Database\QueryException;
 
+
+// DataExportController handles exporting data from external databases to CSV or another database.
 class DataExportController extends ExternalDbController
 {
 
+    // Check export type and route to appropriate method
+    // made for clarity from frontend exportType selection
     public function checkExportType(Request $request) {
         // normalize export payload (accept camelCase or snake_case)
         $export = $request->input('export', []);
+        // determine export type
         $exportType = (int) ($export['exportType'] ?? $export['export_type'] ?? $request->input('export.exportType', 0));
          if ($exportType === 0) {
-             Log::info('ExportDataCSV called');
+             Log::info('ExportDataCSV called'); // log for debugging
              return $this->exportDataCSV($request);
          } else if ($exportType === 1) {
-             Log::info('ExportDataDB called');
+             Log::info('ExportDataDB called'); // log for debugging
              return $this->exportDataDB($request);
          }
     }
+
     // exports the data from an external database table to a CSV file
     public function exportDataCSV(Request $request) {
+
+        // build CSV from query results and return as downloadable response
         $template_name = $request->input('template_name');
         $database = $request->input('database');
         $table = $request->input('table');
@@ -112,6 +118,7 @@ class DataExportController extends ExternalDbController
             $selectPrefixQuoted = $quoteLeft . $schema . $quoteRight . '.' . $quoteLeft . $table . $quoteRight . '.';
         }
 
+        // build select parts
         $selectAll = empty($columns) || $columns === "*" || (is_array($columns) && in_array("*", $columns));
         if ($selectAll) {
             $dbCols = $this->fetchColumnNames($conn, $driver, $table, $schema);
@@ -132,13 +139,16 @@ class DataExportController extends ExternalDbController
             $tableForQuery = $schema . '.' . $table;
         }
 
+        // build query with joins for foreign keys
         $query = $conn->table($tableForQuery);
 
         // Track aliases per referenced table and per parent column
         $aliasCounter = 0;
         $aliasMap = [];
-        $aliasByParent = [];
+        $aliasByParent = []; 
 
+        // process foreign keys
+        // each foreign key selection may reference multiple tables
         if (!empty($foreign_keys) && is_array($foreign_keys)) {
             foreach ($foreign_keys as $sel) {
                 $parentCol = $sel['parentCol'] ?? null;
@@ -198,8 +208,10 @@ class DataExportController extends ExternalDbController
             }
         }
 
+        // finalize select
         $query->selectRaw(implode(', ', $selectParts));
 
+        // process where conditions
         if (!empty($whereConds) && is_array($whereConds)) {
             foreach ($whereConds as $wc) {
                 if (is_array($wc) && array_values($wc) === $wc) {
@@ -248,7 +260,7 @@ class DataExportController extends ExternalDbController
         }
 
         // Validate and set limit and offset
-        $limit = intval($limit) > 0 ? intval($limit) : 1000;
+        $limit = intval($limit) > 0 ? intval($limit) : 1000; // should make this just output all if not set?
         $offset = intval($offset) > 0 ? intval($offset) : 0;
 
         // Add limit and offset
@@ -314,12 +326,16 @@ class DataExportController extends ExternalDbController
             // $csv .= implode(';', $headerOut) . "\n";
         }
 
+        // return CSV as downloadable response
         $filename = $template_name . '_export_' . date('Ymd_His') . '.csv';
         return response($csv)
             ->header('Content-Type', 'text/csv')
             ->header('Content-Disposition', "attachment; filename=\"$filename\"");
     }
 
+    // Remove rows from chunk that already exist in target table based on primary key(s)
+    // need to change it to check all fields, and only skip if all match
+    // later implement edit/update option if one or more fields differ
     private function dedupeRowsByPk($chunk, $targetConn, $targetTableForQuery, $targetPkCols, $validateIdentifier) {
         if (empty($targetPkCols)) {
             return $chunk; // No PK info: cannot dedupe, return all
@@ -390,9 +406,13 @@ class DataExportController extends ExternalDbController
         return $toInsert;
     }
 
+
+    // exports the data from an external database table to another database table
     public function exportDataDB(Request $request) {
         Log::info('Starting exportDataDB process');
         set_time_limit(300); // allow up to 5 minutes
+
+        // get parameters
         $database = $request->input('database');
         $table = $request->input('table');
         $columns = $request->input('query.columns', []);
@@ -501,6 +521,7 @@ class DataExportController extends ExternalDbController
             $tableForQuery = $schema . '.' . $table;
         }
 
+        // build query with joins for foreign keys
         $query = $conn->table($tableForQuery);
 
         // Track aliases per referenced table and per parent column
@@ -508,6 +529,8 @@ class DataExportController extends ExternalDbController
         $aliasMap = [];
         $aliasByParent = [];
 
+        // process foreign keys
+        // each foreign key selection may reference multiple tables
         if (!empty($foreign_keys) && is_array($foreign_keys)) {
             foreach ($foreign_keys as $sel) {
                 $parentCol = $sel['parentCol'] ?? null;
@@ -567,8 +590,10 @@ class DataExportController extends ExternalDbController
             }
         }
 
+        // finalize select
         $query->selectRaw(implode(', ', $selectParts));
 
+        // process where conditions
         if (!empty($whereConds) && is_array($whereConds)) {
             foreach ($whereConds as $wc) {
                 if (is_array($wc) && array_values($wc) === $wc) {
@@ -617,7 +642,7 @@ class DataExportController extends ExternalDbController
         }
 
         // Validate and set limit and offset
-        $limit = intval($limit) > 0 ? intval($limit) : 1000;
+        $limit = intval($limit) > 0 ? intval($limit) : 1000; // should make this just output all if not set?
         $offset = intval($offset) > 0 ? intval($offset) : 0;
 
         // Add limit and offset
@@ -682,7 +707,8 @@ class DataExportController extends ExternalDbController
         if (str_contains($target_table, '.')) {
             [$targetSchema, $target_table] = explode('.', $target_table, 2);
         }
-
+        
+        // prepare target table name for the query builder; qualify with schema if provided
         $targetTableForQuery = $target_table;
         if (!empty($targetSchema)) {
             $targetTableForQuery = $targetSchema . '.' . $target_table;
@@ -729,25 +755,28 @@ class DataExportController extends ExternalDbController
                 $chunkSize = $desiredChunk;
             }
 
+            // Insert in chunks with deduplication
             try {
                 if ($skipFk && $targetDriver === 'mysql') {
                     $targetConn->statement('SET FOREIGN_KEY_CHECKS=0');
                 }
-
+                // Track insert/skipped counts
                 $totalInserted = 0;
                 $totalSkipped = 0;
+                // Process chunks
                 foreach (array_chunk($filteredResultsAll, $chunkSize) as $chunkIndex => $chunk) {
                     if (empty($chunk)) continue;
 
                     // Use the new helper for deduplication
                     $toInsert = $this->dedupeRowsByPk($chunk, $targetConn, $targetTableForQuery, $targetPkCols, $validateIdentifier);
 
+                    // If all rows were duplicates, skip this chunk
                     if (empty($toInsert)) {
                         Log::debug("Chunk " . ($chunkIndex+1) . " skipped entirely due to duplicates.");
                         $totalSkipped += count($chunk);
                         continue;
                     }
-
+                    // Try bulk insert
                     try {
                         $targetConn->table($targetTableForQuery)->insert($toInsert);
                         $totalInserted += count($toInsert);
@@ -759,7 +788,7 @@ class DataExportController extends ExternalDbController
                             || stripos($msg, 'integrity constraint') !== false
                             || stripos($msg, 'Cannot add or update a child row') !== false
                             || $qe->getCode() == 23000;
-
+                        // Fall back to per-row inserts
                         if ($isConstraint) {
                             Log::warning("Chunk insert failed due to constraint; falling back to per-row insert for chunk " . ($chunkIndex+1));
                             foreach ($toInsert as $rowIndex => $singleRow) {
@@ -776,7 +805,7 @@ class DataExportController extends ExternalDbController
                         }
                     }
                 }
-
+                // Final logging
                 if ($skipFk && $targetDriver === 'mysql') {
                     $targetConn->statement('SET FOREIGN_KEY_CHECKS=1');
                 }
@@ -807,15 +836,18 @@ class DataExportController extends ExternalDbController
                  ], 400);
              }
          }
-        Log::info('Data exported to database successfully');
+        Log::info('Data exported to database successfully'); // should make this be written to future history logs
         return response()->json(['message' => 'Data exported to database successfully', 'total_inserted' => $totalInserted, 'total_skipped' => $totalSkipped]);
     }
 
+    // fetch primary key column names for a given table
     private function fetchPrimaryKeys($conn, $driver, $table, $schema = null) {
         $driver = strtolower($driver ?? '');
         $tableName = $table;
         $schemaName = $schema;
 
+        // driver-specific queries
+        // good lord, why did they all have to be different
         try {
             switch ($driver) {
                 case 'mysql':
@@ -885,3 +917,5 @@ class DataExportController extends ExternalDbController
         }
     }
 }
+
+// save me
