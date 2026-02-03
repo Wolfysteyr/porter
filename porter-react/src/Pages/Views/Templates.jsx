@@ -295,6 +295,8 @@ export default function Templates() {
         setIsMessageModalOpen(true);
         setTimeout(() => {
             setIsMessageModalOpen(false);
+            location.state = {};
+            setMessage("");
         }, 3000); // auto close after 3 seconds
     }
 
