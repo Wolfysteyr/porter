@@ -271,9 +271,8 @@ export default function Home() {
 
 
 
-                        <div className="metrics-tile">
-                            <p className="tile-title">Metrics</p>
-                            <div className="tile-content metrics-content">
+                        
+                            <div className="metrics-content">
                             
                                <PieChart
                                     series={databaseSeries}
@@ -288,7 +287,6 @@ export default function Home() {
                                 />
 
                             </div>
-                        </div>
 
                         <div className="changelog-tile">
                             <p className="tile-title">Changelog</p>

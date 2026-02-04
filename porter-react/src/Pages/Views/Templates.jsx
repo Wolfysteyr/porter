@@ -273,7 +273,7 @@ export default function Templates() {
     function closeEditModal() {
         setIsEditModalOpen(false);
         setActiveTemplate(null);
-        fetchTemplates();
+        fetchTemplates(); // refresh templates after editing
     }
 
     // open delete confirmation modal
@@ -512,6 +512,14 @@ export default function Templates() {
                                                 
                                             </span>
                                             <div className="template-actions">
+                                                <a
+                                                    href={`/api/templates/${encodeURIComponent(template.name)}/json`}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    style={{fontSize:"xx-large"}}
+                                                    >
+                                                    View raw JSON
+                                                </a>
                                                 <button
                                                     onClick={() =>
                                                         handleUseTemplate(template)

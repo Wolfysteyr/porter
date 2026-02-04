@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Http\Controllers\ExternalDbController;
+use App\Models\QueryTemplate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Database\QueryException;
 use App\Models\TemplateExportHistory;
@@ -40,37 +41,24 @@ class DataExportController extends ExternalDbController
             $table = $request->input('table');
 
             // Validate required source DB fields
-            if (empty($database) || empty($table)) {
-                $msg = 'Export failed: missing source database or table';
-                Log::error($msg);
-                TemplateExportHistory::saveToExportHistory($template_id, 'csv', null, $database, $table, $msg);
-                return response()->json(['error' => $msg], 400);
-            }
+            $validationResponse = $this->validateRequiredSource($database, $table, $template_id, 'csv');
+            if ($validationResponse) return $validationResponse;
             $columns = $request->input('query.columns', []);
             $foreign_keys = $request->input('query.foreign_keys', []);
             $whereConds = $request->input('query.where', []);
 
             // normalize export block (accept multiple frontend shapes)
-            $export = $request->input('export', []);
-            // limit/offset: prefer export.limit & export.offset, fall back to limitOffsetRules array
-            $limit = $export['limit'] ?? ($export['limitOffsetRules'][0]['limit'] ?? $request->input('export.limitOffsetRules.limit', 1000));
-            $offset = $export['offset'] ?? ($export['limitOffsetRules'][0]['offset'] ?? $request->input('export.limitOffsetRules.offset', 0));
-            // find/replace rules (accept snake_case or camelCase keys)
-            $findReplaceRules = $export['find_replace_rules'] ?? $export['findReplaceRules'] ?? $request->input('export.find_replace_rules', []);
-            // column name changes
-            $colNameChanges = $export['column_name_changes'] ?? $export['columnNameChanges'] ?? $request->input('export.column_name_changes', []);
-            $target_database = $export['target_database'] ?? $export['targetDatabase'] ?? $request->input('export.target_database', null);
-            $target_table = $export['target_table'] ?? $export['targetTable'] ?? $request->input('export.target_table', null);
+            $exportData = $this->normalizeExportBlock($request);
+            $export = $exportData['export'];
+            $limit = $exportData['limit'];
+            $offset = $exportData['offset'];
+            $findReplaceRules = $exportData['findReplaceRules'];
+            $colNameChanges = $exportData['colNameChanges'];
+            $target_database = $exportData['target_database'];
+            $target_table = $exportData['target_table'];
 
             // Build mapping: original => new
-            $colNameMap = [];
-            if (!empty($colNameChanges) && is_array($colNameChanges)) {
-                foreach ($colNameChanges as $change) {
-                    if (isset($change['original'], $change['new']) && $change['original'] && $change['new']) {
-                        $colNameMap[$change['original']] = $change['new'];
-                    }
-                }
-            }
+            $colNameMap = $this->buildColNameMap($colNameChanges);
 
             // use the inherited helper to get a dynamic connection
             $conn = $this->getExternalConnection($database);
@@ -78,266 +66,14 @@ class DataExportController extends ExternalDbController
                 return $conn;
             }
 
-            // validation for table and column names to prevent SQL injection
-            $validateIdentifier = function($name) {
-                return preg_match('/^[a-zA-Z0-9_]+$/', $name);
-            };
-
-            // Prepare main table select columns (qualified with main table name)
-            $selectParts = [];
-            // detect driver and optional schema
-            $driver = strtolower($conn->getConfig('driver') ?? 'mysql');
-            $schema = $request->input('schema');
-            if (!$schema && str_contains($table, '.')) {
-                [$schema, $table] = explode('.', $table, 2);
-            }
-
-            // choose identifier quoting based on driver
-            $quoteLeft = '`';
-            $quoteRight = '`';
-            switch ($driver) {
-                case 'pgsql':
-                case 'postgres':
-                case 'postgresql':
-                case 'oracle':
-                case 'oci':
-                case 'oci8':
-                    $quoteLeft = '"';
-                    $quoteRight = '"';
-                    break;
-                case 'sqlsrv':
-                case 'sqlserver':
-                    $quoteLeft = '[';
-                    $quoteRight = ']';
-                    break;
-                case 'sqlite':
-                    $quoteLeft = '"';
-                    $quoteRight = '"';
-                    break;
-                default:
-                    $quoteLeft = '`';
-                    $quoteRight = '`';
-                    break;
-            }
-
-            // auto-detect owner/schema when missing
-            if (empty($schema)) {
-                $detectedOwner = $this->detectTableOwner($conn, $driver, $table);
-                if ($detectedOwner) $schema = $detectedOwner;
-            }
-
-            // build quoted prefix for selects (include schema when provided)
-            $selectPrefixQuoted = $quoteLeft . $table . $quoteRight . '.';
-            if (!empty($schema)) {
-                $selectPrefixQuoted = $quoteLeft . $schema . $quoteRight . '.' . $quoteLeft . $table . $quoteRight . '.';
-            }
-
-            $selectAll = empty($columns) || $columns === "*" || (is_array($columns) && in_array("*", $columns));
-            if ($selectAll) {
-                $dbCols = $this->fetchColumnNames($conn, $driver, $table, $schema);
-                foreach ($dbCols as $col) {
-                    if (!$validateIdentifier($col)) continue;
-                    $selectParts[] = $selectPrefixQuoted . $quoteLeft . $col . $quoteRight . ' as ' . $quoteLeft . $col . $quoteRight;
-                }
-            } else {
-                foreach ($columns as $col) {
-                    if (!$validateIdentifier($col)) continue;
-                    $selectParts[] = $selectPrefixQuoted . $quoteLeft . $col . $quoteRight . ' as ' . $quoteLeft . $col . $quoteRight;
-                }
-            }
-
-            // prepare table name for the query builder; qualify with schema if provided
-            $tableForQuery = $table;
-            if (!empty($schema)) {
-                $tableForQuery = $schema . '.' . $table;
-            }
-
-            // build query with joins for foreign keys
-            $query = $conn->table($tableForQuery);
-
-            // Track aliases per referenced table and per parent column
-            $aliasCounter = 0;
-            $aliasMap = [];
-            $aliasByParent = [];
-
-            // process foreign keys
-            // each foreign key selection may reference multiple tables
-            if (!empty($foreign_keys) && is_array($foreign_keys)) {
-                foreach ($foreign_keys as $sel) {
-                    $parentCol = $sel['parentCol'] ?? null;
-                    if (!$parentCol || !$validateIdentifier($parentCol)) continue;
-
-                    $fkTables = $sel['fkTables'] ?? [];
-                    if (!is_array($fkTables)) continue;
-
-                    foreach ($fkTables as $fkTable) {
-                        $refTable = $fkTable['tableName'] ?? null;
-                        if (!$refTable || !$validateIdentifier($refTable)) continue;
-
-                        $fkCols = $fkTable['fkColumns'] ?? [];
-                        if (!is_array($fkCols) || empty($fkCols)) continue;
-
-                        // determine referenced column name using driver-aware foreign key metadata
-                        $fkMeta = $this->fetchForeignKeys($conn, $driver, $table, $schema);
-                        $refCol = null;
-                        foreach ($fkMeta as $fk) {
-                            if (($fk->COLUMN_NAME ?? null) === $parentCol && ($fk->REFERENCED_TABLE_NAME ?? null) === $refTable) {
-                                $refCol = $fk->REFERENCED_COLUMN_NAME ?? null;
-                                break;
-                            }
-                        }
-                        if (!$refCol) {
-                            foreach ($fkMeta as $fk) {
-                                if (($fk->COLUMN_NAME ?? null) === $parentCol) {
-                                    $refCol = $fk->REFERENCED_COLUMN_NAME ?? null;
-                                    break;
-                                }
-                            }
-                        }
-                        if (!$refCol || !$validateIdentifier($refCol)) continue;
-
-                        // create unique alias
-                        $alias = preg_replace('/[^A-Za-z0-9_]/', '_', $refTable) . '_' . $aliasCounter++;
-                        $aliasMap[$refTable][] = $alias;
-                        $aliasByParent[$parentCol][$refTable] = $alias;
-
-                        // add join: qualify referenced table with schema if available (may help for Oracle)
-                        $refTableForJoin = $refTable;
-                        if (!empty($schema)) {
-                            $refTableForJoin = $schema . '.' . $refTable;
-                        } else {
-                            $detRefOwner = $this->detectTableOwner($conn, $driver, $refTable);
-                            if ($detRefOwner) $refTableForJoin = $detRefOwner . '.' . $refTable;
-                        }
-                        $query->leftJoin("{$refTableForJoin} as {$alias}", "{$tableForQuery}.{$parentCol}", '=', "{$alias}.{$refCol}");
-
-                        // add referenced columns to selects (use correct quoting)
-                        foreach ($fkCols as $fkCol) {
-                            if (!$validateIdentifier($fkCol)) continue;
-                            $aliasCol = $alias . '__' . $fkCol;
-                            $selectParts[] = $quoteLeft . $alias . $quoteRight . '.' . $quoteLeft . $fkCol . $quoteRight . ' as ' . $quoteLeft . $aliasCol . $quoteRight;
-                        }
-                    }
-                }
-            }
-
-            // finalize select
-            $query->selectRaw(implode(', ', $selectParts));
-
-            // process where conditions
-            if (!empty($whereConds) && is_array($whereConds)) {
-                foreach ($whereConds as $wc) {
-                    if (is_array($wc) && array_values($wc) === $wc) {
-                        $col = $wc[0] ?? null;
-                        $op = strtoupper($wc[1] ?? '=');
-                        $val = $wc[2] ?? null;
-                    } elseif (is_array($wc)) {
-                        $col = $wc['column'] ?? null;
-                        $op = strtoupper($wc['operator'] ?? '=');
-                        $val = $wc['value'] ?? null;
-                    } else {
-                        continue;
-                    }
-                    if (!$col) continue;
-
-                    $qualified = null;
-                    if (str_contains($col, '.')) {
-                        [$tbl, $cname] = explode('.', $col, 2);
-                        if ($tbl === $table) {
-                            $qualified = "{$table}.{$cname}";
-                        } elseif (isset($aliasMap[$tbl]) && count($aliasMap[$tbl]) === 1) {
-                            $qualified = "{$aliasMap[$tbl][0]}.{$cname}";
-                        } elseif (isset($aliasMap[$tbl]) && count($aliasMap[$tbl]) > 1) {
-                            $qualified = "{$aliasMap[$tbl][0]}.{$cname}";
-                        } else {
-                            $qualified = "{$table}.{$cname}";
-                        }
-                    } else {
-                        $qualified = "{$table}.{$col}";
-                    }
-
-                    if ($op === 'IS NULL') {
-                        $query->whereNull($qualified);
-                    } elseif ($op === 'IS NOT NULL') {
-                        $query->whereNotNull($qualified);
-                    } elseif (in_array($op, ['IN', 'NOT IN'])) {
-                        if (!is_array($val)) {
-                            $val = is_string($val) ? array_map('trim', explode(',', $val)) : [$val];
-                        }
-                        if ($op === 'IN') $query->whereIn($qualified, $val);
-                        else $query->whereNotIn($qualified, $val);
-                    } else {
-                        $query->where($qualified, $op, $val);
-                    }
-                }
-            }
-
-            // Validate and set limit and offset
-            $limit = intval($limit) > 0 ? intval($limit) : 1000; // should make this just output all if not set?
-            $offset = intval($offset) > 0 ? intval($offset) : 0;
-
-            // Add limit and offset
-            $results = $query->limit($limit)->offset($offset)->get();
+            // Fetch query results
+            $results = $this->fetchQueryResults($conn, $table, $columns, $foreign_keys, $whereConds, $limit, $offset, $request);
 
             // Apply optional find/replace rules: only replace values that exactly match 'find', not substrings
-            if (!empty($findReplaceRules) && $results->count() > 0) {
-                $results = $results->map(function($row) use ($findReplaceRules) {
-                    $arr = (array) $row;
-
-                    foreach ($findReplaceRules as $rule) {
-                        // normalize rule (allow stdClass or array)
-                        if (is_object($rule)) $rule = (array) $rule;
-                        if (!is_array($rule) || !isset($rule['find'])) continue;
-
-                        $find = $rule['find'];
-                        $replace = $rule['replace'] ?? '';
-
-                        // If rule targets a specific column
-                        if (isset($rule['column']) && is_string($rule['column'])) {
-                            $col = $rule['column'];
-                            if (array_key_exists($col, $arr) && $arr[$col] !== null) {
-                                if ((string)$arr[$col] === (string)$find) {
-                                    $arr[$col] = $replace;
-                                }
-                            }
-                            continue;
-                        }
-
-                        // No column specified -> apply to all columns
-                        foreach ($arr as $colName => $val) {
-                            if ($val === null) continue;
-                            if ((string)$val === (string)$find) {
-                                $arr[$colName] = $replace;
-                            }
-                        }
-                    }
-
-                    return (object) $arr;
-                });
-            }
+            $results = $this->applyFindReplaceRules($results, $findReplaceRules);
 
             // Prepare CSV
-            $csv = '';
-            if (count($results) > 0) {
-                $header = array_keys((array)$results[0]);
-                // Apply column name changes to header
-                $headerOut = array_map(function($col) use ($colNameMap) {
-                    return $colNameMap[$col] ?? $col;
-                }, $header);
-                $csv .= implode(';', $headerOut) . "\n";
-                foreach ($results as $row) {
-                    $csv .= implode(';', array_map(function($v) {
-                        $v = str_replace('"', '""', $v);
-                        if (strpos($v, ';') !== false || strpos($v, '"') !== false || strpos($v, "\n") !== false) {
-                            return "\"$v\"";
-                        }
-                        return $v;
-                    }, (array)$row)) . "\n";
-                }
-            } else {
-                // Optionally, output header only if you know the columns
-                // $csv .= implode(';', $headerOut) . "\n";
-            }
+            $csv = $this->buildCsv($results, $colNameMap);
 
             // return CSV as downloadable response
             $filename = $template_name . '_export_' . date('Ymd_His') . '.csv';
@@ -353,7 +89,7 @@ class DataExportController extends ExternalDbController
     // Remove rows from chunk that already exist in target table based on primary key(s)
     // need to change it to check all fields, and only skip if all match
     // later implement edit/update option if one or more fields differ
-    private function dedupeRowsByPk($chunk, $targetConn, $targetTableForQuery, $targetPkCols, $validateIdentifier) {
+    public static function dedupeRowsByPk($chunk, $targetConn, $targetTableForQuery, $targetPkCols, $validateIdentifier) {
         if (empty($targetPkCols)) {
             return $chunk; // No PK info: cannot dedupe, return all
         }
@@ -435,37 +171,24 @@ class DataExportController extends ExternalDbController
         $table = $request->input('table');
 
         // Validate required source DB fields
-        if (empty($database) || empty($table)) {
-            $msg = 'Export failed: missing source database or table';
-            Log::error($msg);
-            TemplateExportHistory::saveToExportHistory($template_id, 'database', null, $database, $table, $msg);
-            return response()->json(['error' => $msg], 400);
-        }
+        $validationResponse = $this->validateRequiredSource($database, $table, $template_id, 'database');
+        if ($validationResponse) return $validationResponse;
         $columns = $request->input('query.columns', []);
         $foreign_keys = $request->input('query.foreign_keys', []);
         $whereConds = $request->input('query.where', []);
 
         // normalize export block (accept multiple frontend shapes)
-        $export = $request->input('export', []);
-        // limit/offset: prefer export.limit & export.offset, fall back to limitOffsetRules array
-        $limit = $export['limit'] ?? ($export['limitOffsetRules'][0]['limit'] ?? $request->input('export.limitOffsetRules.limit', 1000));
-        $offset = $export['offset'] ?? ($export['limitOffsetRules'][0]['offset'] ?? $request->input('export.limitOffsetRules.offset', 0));
-        // find/replace rules (accept snake_case or camelCase keys)
-        $findReplaceRules = $export['find_replace_rules'] ?? $export['findReplaceRules'] ?? $request->input('export.find_replace_rules', []);
-        // column name changes
-        $colNameChanges = $export['column_name_changes'] ?? $export['columnNameChanges'] ?? $request->input('export.column_name_changes', []);
-        $target_database = $export['target_database'] ?? $export['targetDatabase'] ?? $request->input('export.target_database', null);
-        $target_table = $export['target_table'] ?? $export['targetTable'] ?? $request->input('export.target_table', null);
+        $exportData = $this->normalizeExportBlock($request);
+        $export = $exportData['export'];
+        $limit = $exportData['limit'];
+        $offset = $exportData['offset'];
+        $findReplaceRules = $exportData['findReplaceRules'];
+        $colNameChanges = $exportData['colNameChanges'];
+        $target_database = $exportData['target_database'];
+        $target_table = $exportData['target_table'];
 
         // Build mapping: original => new
-        $colNameMap = [];
-        if (!empty($colNameChanges) && is_array($colNameChanges)) {
-            foreach ($colNameChanges as $change) {
-                if (isset($change['original'], $change['new']) && $change['original'] && $change['new']) {
-                    $colNameMap[$change['original']] = $change['new'];
-                }
-            }
-        }
+        $colNameMap = $this->buildColNameMap($colNameChanges);
 
         // use the inherited helper to get a dynamic connection
         $conn = $this->getExternalConnection($database);
@@ -473,243 +196,11 @@ class DataExportController extends ExternalDbController
             return $conn;
         }
 
-        // validation for table and column names to prevent SQL injection
-        $validateIdentifier = function($name) {
-            return preg_match('/^[a-zA-Z0-9_]+$/', $name);
-        };
-
-        // Prepare main table select columns (qualified with main table name)
-        $selectParts = [];
-        // detect driver and optional schema
-        $driver = strtolower($conn->getConfig('driver') ?? 'mysql');
-        $schema = $request->input('schema');
-        if (!$schema && str_contains($table, '.')) {
-            [$schema, $table] = explode('.', $table, 2);
-        }
-
-        // choose identifier quoting based on driver
-        $quoteLeft = '`';
-        $quoteRight = '`';
-        switch ($driver) {
-            case 'pgsql':
-            case 'postgres':
-            case 'postgresql':
-            case 'oracle':
-            case 'oci':
-            case 'oci8':
-                $quoteLeft = '"';
-                $quoteRight = '"';
-                break;
-            case 'sqlsrv':
-            case 'sqlserver':
-                $quoteLeft = '[';
-                $quoteRight = ']';
-                break;
-            case 'sqlite':
-                $quoteLeft = '"';
-                $quoteRight = '"';
-                break;
-            default:
-                $quoteLeft = '`';
-                $quoteRight = '`';
-                break;
-        }
-
-        // auto-detect owner/schema when missing
-        if (empty($schema)) {
-            $detectedOwner = $this->detectTableOwner($conn, $driver, $table);
-            if ($detectedOwner) $schema = $detectedOwner;
-        }
-
-        // build quoted prefix for selects (include schema when provided)
-        $selectPrefixQuoted = $quoteLeft . $table . $quoteRight . '.';
-        if (!empty($schema)) {
-            $selectPrefixQuoted = $quoteLeft . $schema . $quoteRight . '.' . $quoteLeft . $table . $quoteRight . '.';
-        }
-
-        $selectAll = empty($columns) || $columns === "*" || (is_array($columns) && in_array("*", $columns));
-        if ($selectAll) {
-            $dbCols = $this->fetchColumnNames($conn, $driver, $table, $schema);
-            foreach ($dbCols as $col) {
-                if (!$validateIdentifier($col)) continue;
-                $selectParts[] = $selectPrefixQuoted . $quoteLeft . $col . $quoteRight . ' as ' . $quoteLeft . $col . $quoteRight;
-            }
-        } else {
-            foreach ($columns as $col) {
-                if (!$validateIdentifier($col)) continue;
-                $selectParts[] = $selectPrefixQuoted . $quoteLeft . $col . $quoteRight . ' as ' . $quoteLeft . $col . $quoteRight;
-            }
-        }
-
-        // prepare table name for the query builder; qualify with schema if provided
-        $tableForQuery = $table;
-        if (!empty($schema)) {
-            $tableForQuery = $schema . '.' . $table;
-        }
-
-        // build query with joins for foreign keys
-        $query = $conn->table($tableForQuery);
-
-        // Track aliases per referenced table and per parent column
-        $aliasCounter = 0;
-        $aliasMap = [];
-        $aliasByParent = [];
-
-        // process foreign keys
-        // each foreign key selection may reference multiple tables
-        if (!empty($foreign_keys) && is_array($foreign_keys)) {
-            foreach ($foreign_keys as $sel) {
-                $parentCol = $sel['parentCol'] ?? null;
-                if (!$parentCol || !$validateIdentifier($parentCol)) continue;
-
-                $fkTables = $sel['fkTables'] ?? [];
-                if (!is_array($fkTables)) continue;
-
-                foreach ($fkTables as $fkTable) {
-                    $refTable = $fkTable['tableName'] ?? null;
-                    if (!$refTable || !$validateIdentifier($refTable)) continue;
-
-                    $fkCols = $fkTable['fkColumns'] ?? [];
-                    if (!is_array($fkCols) || empty($fkCols)) continue;
-
-                    // determine referenced column name using driver-aware foreign key metadata
-                    $fkMeta = $this->fetchForeignKeys($conn, $driver, $table, $schema);
-                    $refCol = null;
-                    foreach ($fkMeta as $fk) {
-                        if (($fk->COLUMN_NAME ?? null) === $parentCol && ($fk->REFERENCED_TABLE_NAME ?? null) === $refTable) {
-                            $refCol = $fk->REFERENCED_COLUMN_NAME ?? null;
-                            break;
-                        }
-                    }
-                    if (!$refCol) {
-                        foreach ($fkMeta as $fk) {
-                            if (($fk->COLUMN_NAME ?? null) === $parentCol) {
-                                $refCol = $fk->REFERENCED_COLUMN_NAME ?? null;
-                                break;
-                            }
-                        }
-                    }
-                    if (!$refCol || !$validateIdentifier($refCol)) continue;
-
-                    // create unique alias
-                    $alias = preg_replace('/[^A-Za-z0-9_]/', '_', $refTable) . '_' . $aliasCounter++;
-                    $aliasMap[$refTable][] = $alias;
-                    $aliasByParent[$parentCol][$refTable] = $alias;
-
-                    // add join: qualify referenced table with schema if available (may help for Oracle)
-                    $refTableForJoin = $refTable;
-                    if (!empty($schema)) {
-                        $refTableForJoin = $schema . '.' . $refTable;
-                    } else {
-                        $detRefOwner = $this->detectTableOwner($conn, $driver, $refTable);
-                        if ($detRefOwner) $refTableForJoin = $detRefOwner . '.' . $refTable;
-                    }
-                    $query->leftJoin("{$refTableForJoin} as {$alias}", "{$tableForQuery}.{$parentCol}", '=', "{$alias}.{$refCol}");
-
-                    // add referenced columns to selects (use correct quoting)
-                    foreach ($fkCols as $fkCol) {
-                        if (!$validateIdentifier($fkCol)) continue;
-                        $aliasCol = $alias . '__' . $fkCol;
-                        $selectParts[] = $quoteLeft . $alias . $quoteRight . '.' . $quoteLeft . $fkCol . $quoteRight . ' as ' . $quoteLeft . $aliasCol . $quoteRight;
-                    }
-                }
-            }
-        }
-
-        // finalize select
-        $query->selectRaw(implode(', ', $selectParts));
-
-        // process where conditions
-        if (!empty($whereConds) && is_array($whereConds)) {
-            foreach ($whereConds as $wc) {
-                if (is_array($wc) && array_values($wc) === $wc) {
-                    $col = $wc[0] ?? null;
-                    $op = strtoupper($wc[1] ?? '=');
-                    $val = $wc[2] ?? null;
-                } elseif (is_array($wc)) {
-                    $col = $wc['column'] ?? null;
-                    $op = strtoupper($wc['operator'] ?? '=');
-                    $val = $wc['value'] ?? null;
-                } else {
-                    continue;
-                }
-                if (!$col) continue;
-
-                $qualified = null;
-                if (str_contains($col, '.')) {
-                    [$tbl, $cname] = explode('.', $col, 2);
-                    if ($tbl === $table) {
-                        $qualified = "{$table}.{$cname}";
-                    } elseif (isset($aliasMap[$tbl]) && count($aliasMap[$tbl]) === 1) {
-                        $qualified = "{$aliasMap[$tbl][0]}.{$cname}";
-                    } elseif (isset($aliasMap[$tbl]) && count($aliasMap[$tbl]) > 1) {
-                        $qualified = "{$aliasMap[$tbl][0]}.{$cname}";
-                    } else {
-                        $qualified = "{$table}.{$cname}";
-                    }
-                } else {
-                    $qualified = "{$table}.{$col}";
-                }
-
-                if ($op === 'IS NULL') {
-                    $query->whereNull($qualified);
-                } elseif ($op === 'IS NOT NULL') {
-                    $query->whereNotNull($qualified);
-                } elseif (in_array($op, ['IN', 'NOT IN'])) {
-                    if (!is_array($val)) {
-                        $val = is_string($val) ? array_map('trim', explode(',', $val)) : [$val];
-                    }
-                    if ($op === 'IN') $query->whereIn($qualified, $val);
-                    else $query->whereNotIn($qualified, $val);
-                } else {
-                    $query->where($qualified, $op, $val);
-                }
-            }
-        }
-
-        // Validate and set limit and offset
-        $limit = intval($limit) > 0 ? intval($limit) : 1000; // should make this just output all if not set?
-        $offset = intval($offset) > 0 ? intval($offset) : 0;
-
-        // Add limit and offset
-        $results = $query->limit($limit)->offset($offset)->get();
+        // Fetch query results
+        $results = $this->fetchQueryResults($conn, $table, $columns, $foreign_keys, $whereConds, $limit, $offset, $request);
 
         // Apply optional find/replace rules: only replace values that exactly match 'find', not substrings
-        if (!empty($findReplaceRules) && $results->count() > 0) {
-            $results = $results->map(function($row) use ($findReplaceRules) {
-                $arr = (array) $row;
-
-                foreach ($findReplaceRules as $rule) {
-                    // normalize rule (allow stdClass or array)
-                    if (is_object($rule)) $rule = (array) $rule;
-                    if (!is_array($rule) || !isset($rule['find'])) continue;
-
-                    $find = $rule['find'];
-                    $replace = $rule['replace'] ?? '';
-
-                    // If rule targets a specific column
-                    if (isset($rule['column']) && is_string($rule['column'])) {
-                        $col = $rule['column'];
-                        if (array_key_exists($col, $arr) && $arr[$col] !== null) {
-                            if ((string)$arr[$col] === (string)$find) {
-                                $arr[$col] = $replace;
-                            }
-                        }
-                        continue;
-                    }
-
-                    // No column specified -> apply to all columns
-                    foreach ($arr as $colName => $val) {
-                        if ($val === null) continue;
-                        if ((string)$val === (string)$find) {
-                            $arr[$colName] = $replace;
-                        }
-                    }
-                }
-
-                return (object) $arr;
-            });
-        }
+        $results = $this->applyFindReplaceRules($results, $findReplaceRules);
 
         // Map column names
         $mappedResults = $results->map(function($row) use ($colNameMap) {
@@ -745,6 +236,8 @@ class DataExportController extends ExternalDbController
 
         // Fetch target table columns
         $targetCols = $this->fetchColumnNames($targetConn, $targetDriver, $target_table, $targetSchema);
+        // Fetch target table primary key columns
+        $targetPkCols = $this->fetchPrimaryKeys($targetConn, $targetDriver, $target_table, $targetSchema);
 
         // Validate that every column present in the export exists on the target table.
         // If even one column is missing, fail, log and record history.
@@ -788,6 +281,9 @@ class DataExportController extends ExternalDbController
             }
 
             // Insert in chunks with deduplication
+            $validateIdentifier = function($name) {
+                return preg_match('/^[a-zA-Z0-9_]+$/', $name);
+            };
             try {
                 if ($skipFk && $targetDriver === 'mysql') {
                     $targetConn->statement('SET FOREIGN_KEY_CHECKS=0');
@@ -876,8 +372,313 @@ class DataExportController extends ExternalDbController
         return response()->json(['message' => 'Data exported to database successfully', 'total_inserted' => $totalInserted, 'total_skipped' => $totalSkipped]);
     }
 
-    // fetch primary key column names for a given table
-    private function fetchPrimaryKeys($conn, $driver, $table, $schema = null) {
+    public static function normalizeExportBlock(Request $request) {
+        $export = $request->input('export', []);
+        $limit = $export['limit'] ?? ($export['limitOffsetRules'][0]['limit'] ?? $request->input('export.limitOffsetRules.limit', 1000));
+        $offset = $export['offset'] ?? ($export['limitOffsetRules'][0]['offset'] ?? $request->input('export.limitOffsetRules.offset', 0));
+        $findReplaceRules = $export['find_replace_rules'] ?? $export['findReplaceRules'] ?? $request->input('export.find_replace_rules', []);
+        $colNameChanges = $export['column_name_changes'] ?? $export['columnNameChanges'] ?? $request->input('export.column_name_changes', []);
+        $target_database = $export['target_database'] ?? $export['targetDatabase'] ?? $request->input('export.target_database', null);
+        $target_table = $export['target_table'] ?? $export['targetTable'] ?? $request->input('export.target_table', null);
+
+        return [
+            'export' => $export,
+            'limit' => $limit,
+            'offset' => $offset,
+            'findReplaceRules' => $findReplaceRules,
+            'colNameChanges' => $colNameChanges,
+            'target_database' => $target_database,
+            'target_table' => $target_table,
+        ];
+    }
+
+    public static function buildColNameMap($colNameChanges) {
+        $colNameMap = [];
+        if (!empty($colNameChanges) && is_array($colNameChanges)) {
+            foreach ($colNameChanges as $change) {
+                if (isset($change['original'], $change['new']) && $change['original'] && $change['new']) {
+                    $colNameMap[$change['original']] = $change['new'];
+                }
+            }
+        }
+        return $colNameMap;
+    }
+
+    public static function validateRequiredSource($database, $table, $template_id, $exportType) {
+        if (empty($database) || empty($table)) {
+            $msg = 'Export failed: missing source database or table';
+            Log::error($msg);
+            TemplateExportHistory::saveToExportHistory($template_id, $exportType, null, $database, $table, $msg);
+            return response()->json(['error' => $msg], 400);
+        }
+        return null;
+    }
+
+    public static function getQuoteChars($driver) {
+        switch ($driver) {
+            case 'pgsql':
+            case 'postgres':
+            case 'postgresql':
+            case 'oracle':
+            case 'oci':
+            case 'oci8':
+                return ['"', '"'];
+            case 'sqlsrv':
+            case 'sqlserver':
+                return ['[', ']'];
+            case 'sqlite':
+                return ['"', '"'];
+            default:
+                return ['`', '`'];
+        }
+    }
+
+    public static function normalizeSchemaAndTable($table, $schema, $conn, $driver) {
+        if (!$schema && str_contains($table, '.')) {
+            [$schema, $table] = explode('.', $table, 2);
+        }
+        if (empty($schema)) {
+            $detectedOwner = self::detectTableOwner($conn, $driver, $table);
+            if ($detectedOwner) $schema = $detectedOwner;
+        }
+        return [$schema, $table];
+    }
+
+    public static function applyWhereConditions($query, $whereConds, $table, $aliasMap) {
+        if (!empty($whereConds) && is_array($whereConds)) {
+            foreach ($whereConds as $wc) {
+                if (is_array($wc) && array_values($wc) === $wc) {
+                    $col = $wc[0] ?? null;
+                    $op = strtoupper($wc[1] ?? '=');
+                    $val = $wc[2] ?? null;
+                } elseif (is_array($wc)) {
+                    $col = $wc['column'] ?? null;
+                    $op = strtoupper($wc['operator'] ?? '=');
+                    $val = $wc['value'] ?? null;
+                } else {
+                    continue;
+                }
+                if (!$col) continue;
+
+                $qualified = null;
+                if (str_contains($col, '.')) {
+                    [$tbl, $cname] = explode('.', $col, 2);
+                    if ($tbl === $table) {
+                        $qualified = "{$table}.{$cname}";
+                    } elseif (isset($aliasMap[$tbl]) && count($aliasMap[$tbl]) === 1) {
+                        $qualified = "{$aliasMap[$tbl][0]}.{$cname}";
+                    } elseif (isset($aliasMap[$tbl]) && count($aliasMap[$tbl]) > 1) {
+                        $qualified = "{$aliasMap[$tbl][0]}.{$cname}";
+                    } else {
+                        $qualified = "{$table}.{$cname}";
+                    }
+                } else {
+                    $qualified = "{$table}.{$col}";
+                }
+
+                if ($op === 'IS NULL') {
+                    $query->whereNull($qualified);
+                } elseif ($op === 'IS NOT NULL') {
+                    $query->whereNotNull($qualified);
+                } elseif (in_array($op, ['IN', 'NOT IN'])) {
+                    if (!is_array($val)) {
+                        $val = is_string($val) ? array_map('trim', explode(',', $val)) : [$val];
+                    }
+                    if ($op === 'IN') $query->whereIn($qualified, $val);
+                    else $query->whereNotIn($qualified, $val);
+                } else {
+                    $query->where($qualified, $op, $val);
+                }
+            }
+        }
+    }
+
+    public static function applyFindReplaceRules($results, $findReplaceRules) {
+        if (empty($findReplaceRules) || $results->count() === 0) {
+            return $results;
+        }
+
+        return $results->map(function($row) use ($findReplaceRules) {
+            $arr = (array) $row;
+
+            foreach ($findReplaceRules as $rule) {
+                if (is_object($rule)) $rule = (array) $rule;
+                if (!is_array($rule) || !isset($rule['find'])) continue;
+
+                $find = $rule['find'];
+                $replace = $rule['replace'] ?? '';
+
+                if (isset($rule['column']) && is_string($rule['column'])) {
+                    $col = $rule['column'];
+                    if (array_key_exists($col, $arr) && $arr[$col] !== null) {
+                        if ((string)$arr[$col] === (string)$find) {
+                            $arr[$col] = $replace;
+                        }
+                    }
+                    continue;
+                }
+
+                foreach ($arr as $colName => $val) {
+                    if ($val === null) continue;
+                    if ((string)$val === (string)$find) {
+                        $arr[$colName] = $replace;
+                    }
+                }
+            }
+
+            return (object) $arr;
+        });
+    }
+
+    public static function buildCsv($results, $colNameMap) {
+        $csv = '';
+        if (count($results) > 0) {
+            $header = array_keys((array)$results[0]);
+            $headerOut = array_map(function($col) use ($colNameMap) {
+                return $colNameMap[$col] ?? $col;
+            }, $header);
+            $csv .= implode(';', $headerOut) . "\n";
+            foreach ($results as $row) {
+                $csv .= implode(';', array_map(function($v) {
+                    $v = str_replace('"', '""', $v);
+                    if (strpos($v, ';') !== false || strpos($v, '"') !== false || strpos($v, "\n") !== false) {
+                        return "\"$v\"";
+                    }
+                    return $v;
+                }, (array)$row)) . "\n";
+            }
+        }
+
+        return $csv;
+    }
+
+    public static function fetchQueryResults($conn, $table, $columns, $foreign_keys, $whereConds, $limit, $offset, Request $request) {
+        // validation for table and column names to prevent SQL injection
+        $validateIdentifier = function($name) {
+            return preg_match('/^[a-zA-Z0-9_]+$/', $name);
+        };
+
+        // Prepare main table select columns (qualified with main table name)
+        $selectParts = [];
+        // detect driver and optional schema
+        $driver = strtolower($conn->getConfig('driver') ?? 'mysql');
+        $schema = $request->input('schema');
+        [$schema, $table] = self::normalizeSchemaAndTable($table, $schema, $conn, $driver);
+
+        // choose identifier quoting based on driver
+        [$quoteLeft, $quoteRight] = self::getQuoteChars($driver);
+
+        // build quoted prefix for selects (include schema when provided)
+        $selectPrefixQuoted = $quoteLeft . $table . $quoteRight . '.';
+        if (!empty($schema)) {
+            $selectPrefixQuoted = $quoteLeft . $schema . $quoteRight . '.' . $quoteLeft . $table . $quoteRight . '.';
+        }
+
+        $selectAll = empty($columns) || $columns === "*" || (is_array($columns) && in_array("*", $columns));
+        if ($selectAll) {
+            $dbCols = self::fetchColumnNames($conn, $driver, $table, $schema);
+            foreach ($dbCols as $col) {
+                if (!$validateIdentifier($col)) continue;
+                $selectParts[] = $selectPrefixQuoted . $quoteLeft . $col . $quoteRight . ' as ' . $quoteLeft . $col . $quoteRight;
+            }
+        } else {
+            foreach ($columns as $col) {
+                if (!$validateIdentifier($col)) continue;
+                $selectParts[] = $selectPrefixQuoted . $quoteLeft . $col . $quoteRight . ' as ' . $quoteLeft . $col . $quoteRight;
+            }
+        }
+
+        // prepare table name for the query builder; qualify with schema if provided
+        $tableForQuery = $table;
+        if (!empty($schema)) {
+            $tableForQuery = $schema . '.' . $table;
+        }
+
+        // build query with joins for foreign keys
+        $query = $conn->table($tableForQuery);
+
+        // Track aliases per referenced table and per parent column
+        $aliasCounter = 0;
+        $aliasMap = [];
+        $aliasByParent = [];
+
+        // process foreign keys
+        // each foreign key selection may reference multiple tables
+        if (!empty($foreign_keys) && is_array($foreign_keys)) {
+            foreach ($foreign_keys as $sel) {
+                $parentCol = $sel['parentCol'] ?? null;
+                if (!$parentCol || !$validateIdentifier($parentCol)) continue;
+
+                $fkTables = $sel['fkTables'] ?? [];
+                if (!is_array($fkTables)) continue;
+
+                foreach ($fkTables as $fkTable) {
+                    $refTable = $fkTable['tableName'] ?? null;
+                    if (!$refTable || !$validateIdentifier($refTable)) continue;
+
+                    $fkCols = $fkTable['fkColumns'] ?? [];
+                    if (!is_array($fkCols) || empty($fkCols)) continue;
+
+                    // determine referenced column name using driver-aware foreign key metadata
+                    $fkMeta = self::fetchForeignKeys($conn, $driver, $table, $schema);
+                    $refCol = null;
+                    foreach ($fkMeta as $fk) {
+                        if (($fk->COLUMN_NAME ?? null) === $parentCol && ($fk->REFERENCED_TABLE_NAME ?? null) === $refTable) {
+                            $refCol = $fk->REFERENCED_COLUMN_NAME ?? null;
+                            break;
+                        }
+                    }
+                    if (!$refCol) {
+                        foreach ($fkMeta as $fk) {
+                            if (($fk->COLUMN_NAME ?? null) === $parentCol) {
+                                $refCol = $fk->REFERENCED_COLUMN_NAME ?? null;
+                                break;
+                            }
+                        }
+                    }
+                    if (!$refCol || !$validateIdentifier($refCol)) continue;
+
+                    // create unique alias
+                    $alias = preg_replace('/[^A-Za-z0-9_]/', '_', $refTable) . '_' . $aliasCounter++;
+                    $aliasMap[$refTable][] = $alias;
+                    $aliasByParent[$parentCol][$refTable] = $alias;
+
+                    // add join: qualify referenced table with schema if available (may help for Oracle)
+                    $refTableForJoin = $refTable;
+                    if (!empty($schema)) {
+                        $refTableForJoin = $schema . '.' . $refTable;
+                    } else {
+                        $detRefOwner = self::detectTableOwner($conn, $driver, $refTable);
+                        if ($detRefOwner) $refTableForJoin = $detRefOwner . '.' . $refTable;
+                    }
+                    $query->leftJoin("{$refTableForJoin} as {$alias}", "{$tableForQuery}.{$parentCol}", '=', "{$alias}.{$refCol}");
+
+                    // add referenced columns to selects (use correct quoting)
+                    foreach ($fkCols as $fkCol) {
+                        if (!$validateIdentifier($fkCol)) continue;
+                        $aliasCol = $alias . '__' . $fkCol;
+                        $selectParts[] = $quoteLeft . $alias . $quoteRight . '.' . $quoteLeft . $fkCol . $quoteRight . ' as ' . $quoteLeft . $aliasCol . $quoteRight;
+                    }
+                }
+            }
+        }
+
+        // finalize select
+        $query->selectRaw(implode(', ', $selectParts));
+
+        // process where conditions
+        self::applyWhereConditions($query, $whereConds, $table, $aliasMap);
+
+        // Validate and set limit and offset
+        $limit = intval($limit) > 0 ? intval($limit) : 1000; // should make this just output all if not set?
+        $offset = intval($offset) > 0 ? intval($offset) : 0;
+
+        // Add limit and offset
+        return $query->limit($limit)->offset($offset)->get();
+    }
+
+    // fetch primary key column names for a given table, redundant?
+    public static function fetchPrimaryKeys($conn, $driver, $table, $schema = null) {
         $driver = strtolower($driver ?? '');
         $tableName = $table;
         $schemaName = $schema;
@@ -952,6 +753,34 @@ class DataExportController extends ExternalDbController
             return [];
         }
     }
-}
 
-// save me
+    public static function getTemplateResults($template_name)
+    {
+        $template = QueryTemplate::where('name', $template_name)->first();
+        if (!$template) {
+            return response()->json(['error' => 'Template not found'], 404);
+        }
+
+        $conn = self::getExternalConnection($template->database);
+        if ($conn instanceof \Illuminate\Http\JsonResponse) {
+            return $conn;
+        }
+
+        $query = is_array($template->query) ? (object) $template->query : $template->query;
+
+        $results = self::fetchQueryResults(
+            $conn,
+            $template->table,
+            $query->columns ?? [],
+            $query->foreign_keys ?? [],
+            $query->where ?? [],
+            $query->limit ?? 1000,
+            $query->offset ?? 0,
+            new Request()
+        );
+
+        return $results;
+    }
+
+
+}

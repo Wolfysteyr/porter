@@ -62,7 +62,7 @@ class ExternalDbController extends Controller
      * Detect table owner/schema for drivers where schema matters (Oracle, Postgres, SQL Server, MySQL)
      * Returns schema/owner name (string) or null if not determinable.
      */
-    protected function detectTableOwner($conn, $driver, $table)
+    public static function detectTableOwner($conn, $driver, $table)
     {
         $driver = strtolower($driver ?? $conn->getConfig('driver') ?? 'mysql');
         try {
@@ -216,7 +216,7 @@ class ExternalDbController extends Controller
     /**
      * Get a DB connection for a given external database identifier.
      */
-    protected function getExternalConnection($name)
+    public static function getExternalConnection($name)
     {
         if (!$name) {
             // fallback to default 'external' connection
@@ -250,7 +250,7 @@ class ExternalDbController extends Controller
      * Fetch column names for a table in a driver-aware way.
      * Returns an array of column names (strings).
      */
-    protected function fetchColumnNames($conn, $driver, $table, $schema = null)
+    public static function fetchColumnNames($conn, $driver, $table, $schema = null)
     {
         $driver = strtolower($driver ?? $conn->getConfig('driver') ?? 'mysql');
         $rows = [];
@@ -311,7 +311,7 @@ class ExternalDbController extends Controller
      * Fetch foreign key metadata for a table in a driver-aware way.
      * Returns an array of objects with keys: CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
      */
-    protected function fetchForeignKeys($conn, $driver, $table, $schema = null)
+    public static function fetchForeignKeys($conn, $driver, $table, $schema = null)
     {
         $driver = strtolower($driver ?? $conn->getConfig('driver') ?? 'mysql');
         $rows = [];

@@ -12,7 +12,7 @@ export default function AppProvider({children}){
 
     // Fetch user data when token changes
     async function getUser() {
-        const res = await fetch('api/user', {
+        const res = await fetch(`${appAddress}/api/user`, {
             headers:{
                 "Authorization": `Bearer ${token}`,
                 "Accept":"application/json"

@@ -38,6 +38,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/export', [DataExportController::class, 'checkExportType']);
 });
 
+use App\Http\Controllers\QueryTemplateJsonOutput;
+
+// template query JSON output route
+Route::get('/templates/{template_name}/json', [QueryTemplateJsonOutput::class, 'viewTemplate'])
+    // allow spaces and most characters, but still disallow "/" so the URL segment is safe
+    ->where('template_name', '[^/]+');
+
 // QueryTemplate routes
 use App\Http\Controllers\QueryTemplateController;
 

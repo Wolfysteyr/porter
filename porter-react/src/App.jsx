@@ -13,6 +13,12 @@ import './App.css'
 import { useContext } from "react";
 import { AppContext } from "./Context/AppContext.jsx";
 
+const LaravelTemplateViewRedirect = () => {
+  const url = window.location.pathname + window.location.search;
+  window.location.href = url; // let Laravel handle it
+  return null;
+};
+
 function App() {
 
   const {user} = useContext(AppContext);
@@ -29,7 +35,6 @@ function App() {
         <Route path="/export" element={user ? <Export/> : <Login/>}/>
         <Route path="/set-password" element={<SetPassword/>}/>
         <Route path="/databases" element={user ? (user.admin === 1 ? <Databases/> : <Home/>) : <Login/>}/>
-
       </Route>
     </Routes>
   </BrowserRouter> 
