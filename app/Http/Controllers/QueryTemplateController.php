@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\QueryTemplate;
 use Illuminate\Validation\Rule;
+use App\Models\TemplateHistory;
+use App\Models\User;
 
 // QueryTemplateController manages CRUD operations for QueryTemplate model.
 class QueryTemplateController extends Controller
@@ -44,6 +46,19 @@ class QueryTemplateController extends Controller
             'user_id' => $data['user_id'] ?? auth()->id(),
         ]);
 
+        // Save a history record
+        TemplateHistory::logTemplateAction(
+            $tpl->id,
+            'create',
+            $tpl->user_id,
+            $tpl->name,
+            $tpl->database,
+            $tpl->table,
+            $tpl->query,
+            $tpl->export,
+            $tpl->auto
+        );
+
         return response()->json($tpl, 201);
     }
 
@@ -82,13 +97,42 @@ class QueryTemplateController extends Controller
         $tpl->auto = $data['auto'] ?? $tpl->auto;
         $tpl->save();
 
+        // Save a history record
+        TemplateHistory::logTemplateAction(
+            $tpl->id,
+            'update',
+            $tpl->user_id,
+            $tpl->name,
+            $tpl->database,
+            $tpl->table,
+            $tpl->query,
+            $tpl->export,
+            $tpl->auto
+        );
+
         return response()->json($tpl, 200);
     }
 
     // Delete a query template
     public function destroy($id)
     {
+
+        // Save a history record
+        TemplateHistory::logTemplateAction(
+            $id,
+            'delete',
+            QueryTemplate::findOrFail($id)->user_id,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+
+
         QueryTemplate::findOrFail($id)->delete();
+
         return response()->json(null, 204);
     }
 }

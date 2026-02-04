@@ -12,12 +12,6 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 
-Route::post('/register', [AuthController::class, 'register']);
-
-Route::post('/login', [AuthController::class, 'login']);
-
-Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
-
 
 // External Database routes
 use App\Http\Controllers\ExternalDbController;
@@ -41,7 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
 use App\Http\Controllers\QueryTemplateJsonOutput;
 
 // template query JSON output route
-Route::get('/templates/{template_name}/json', [QueryTemplateJsonOutput::class, 'viewTemplate'])
+Route::middleware(['web', 'auth:sanctum'])->get('/templates/{template_name}/json', [QueryTemplateJsonOutput::class, 'viewTemplate'])
     // allow spaces and most characters, but still disallow "/" so the URL segment is safe
     ->where('template_name', '[^/]+');
 

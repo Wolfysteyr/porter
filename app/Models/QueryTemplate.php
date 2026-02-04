@@ -124,4 +124,10 @@ class QueryTemplate extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function templateHistories()
+    {
+        return $this->hasMany(TemplateHistory::class, 'template_id');
+    }
+
 }

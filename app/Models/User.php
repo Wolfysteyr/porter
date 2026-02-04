@@ -55,6 +55,11 @@ class User extends Authenticatable
 
     public function queryTemplates()
     {
-        return $this->hasMany(QueryTemplate::class);
+        return $this->hasMany(QueryTemplate::class, 'user_id');
+    }
+
+    public function templateHistories()
+    {
+        return $this->hasManyThrough(TemplateHistory::class, QueryTemplate::class, 'user_id', 'template_id', 'id', 'id');
     }
 }
