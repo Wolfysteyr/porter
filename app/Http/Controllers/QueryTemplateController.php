@@ -135,4 +135,13 @@ class QueryTemplateController extends Controller
 
         return response()->json(null, 204);
     }
+
+    // get histories for a template
+
+    public function getHistoriesForTemplate($template_id)
+    {
+        $histories = TemplateHistory::getHistoriesForTemplate($template_id);
+        return response()->json($histories, 200);
+    }
 }
+

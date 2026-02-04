@@ -5,7 +5,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import TemplateSideMenu from "../../Components/TemplateSideMenu";
 import { useQueryBuilder } from "../../hooks/useQueryBuilder";
 import Tippy from "@tippyjs/react";
-import { Popover } from "@mui/material";
+import LastUpdatePopover from "../../Components/LastUpdatePopover";
 
 export default function Templates() {
 
@@ -482,9 +482,7 @@ export default function Templates() {
                                             </span>
 
                                             <span className="template-updated-at">
-                                                {new Date(
-                                                    template.updated_at,
-                                                ).toLocaleDateString()}
+                                                <LastUpdatePopover template={template} />
                                             </span>
                                             <span className="auto-timer">
                                                 {template.auto?.active ? (

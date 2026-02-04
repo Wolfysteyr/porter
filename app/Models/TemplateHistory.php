@@ -15,7 +15,6 @@ class TemplateHistory extends Model
         'template_id',
         'action',
         'committed_by',
-
         'template_snapshot', // stored as JSON -> temp_name, temp_db, temp_table, temp_query (columns, where, fks), 
         //export (type, target db & table or file, f&r options, column name changes, limit offset), 
         // auto (schedule, interval, unit, active) 
@@ -55,5 +54,14 @@ class TemplateHistory extends Model
             'template_snapshot' => $template_snapshot,
         ]);
         Log::info("Template action logged: Template ID $template_id, Action: $action, Committed by: $committed_by");
+    }
+
+    // get all histories for a given template
+    public static function getHistoriesForTemplate($template_id)
+    {
+        return self::where('template_id', $template_id)
+            ->with('user') // eager load user relationship
+            ->orderBy('created_at', 'desc')
+            ->get();
     }
 }

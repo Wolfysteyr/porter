@@ -8,5 +8,7 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-
-
+// redirect to front login page
+Route::get('/login', function () {
+    return redirect('/login'); 
+});

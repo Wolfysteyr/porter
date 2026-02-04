@@ -6,13 +6,21 @@ use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+Route::get('/users', function (Request $request) {
+    return \App\Models\User::all();
+})->middleware('auth:sanctum'); 
 
 
+// Authentication routes
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class,'login']);
+Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 // External Database routes
 use App\Http\Controllers\ExternalDbController;
 
@@ -71,3 +79,6 @@ Route::post('/reset-password', function (Request $request) {
         'email' => [__($status)],
     ]);
 });
+
+// route to get template histories
+Route::get('/templates/{template_id}/history', [QueryTemplateController::class, 'getHistoriesForTemplate'])->middleware('auth:sanctum');

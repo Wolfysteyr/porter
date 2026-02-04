@@ -1412,3 +1412,13 @@ button{
   justify-content: space-between;
 }
 
+.popover-history{
+  cursor: pointer;
+  text-decoration: underline;
+  transition: text-shadow 0.3s ease, text-decoration 0.3s ease;
+}
+
+.popover-history:hover{
+  text-decoration: none;
+  text-shadow: 0 0 10px #000000;
+}
