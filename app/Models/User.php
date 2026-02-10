@@ -23,6 +23,7 @@ class User extends Authenticatable
         'email',
         'password',
         'admin', // 1 for admin, 0 for regular user
+        'access'// optional json to specify granular access controls (e.g. which databases they can access, or which actions they can perform)
     ];
 
     /**

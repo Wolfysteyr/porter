@@ -1422,3 +1422,16 @@ button{
   text-decoration: none;
   text-shadow: 0 0 10px #000000;
 }
+
+
+.template-logs, .export-logs, .users{
+  max-height: 400px;
+  min-width: 300px;
+  max-width: 600px;
+  overflow: auto;
+  border: #ffffff 1px solid;
+  border-radius: 8px;
+  background-color: #192231; /* Slate-800 */
+  box-shadow: 10px 10px 15px rgba(0, 0, 0, 0.3);
+  padding: 2rem;
+}

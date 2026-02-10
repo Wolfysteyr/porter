@@ -49,4 +49,10 @@ class TemplateExportHistory extends Model
             }
         }
     }
+    // get entire export history 
+    public static function getExportHistory(){
+        return self::with('template') // eager load template relationship
+            ->orderBy('exported_at', 'desc')
+            ->get();
+    } 
 }

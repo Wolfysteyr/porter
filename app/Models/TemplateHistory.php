@@ -57,10 +57,16 @@ class TemplateHistory extends Model
     }
 
     // get all histories for a given template
-    public static function getHistoriesForTemplate($template_id)
+    public static function getTemplateHistory($template_id)
     {
         return self::where('template_id', $template_id)
             ->with('user') // eager load user relationship
+            ->orderBy('created_at', 'desc')
+            ->get();
+    }
+
+    public static function getAllTemplateHistory(){
+        return self::with('user', 'template') // eager load user and template relationships
             ->orderBy('created_at', 'desc')
             ->get();
     }

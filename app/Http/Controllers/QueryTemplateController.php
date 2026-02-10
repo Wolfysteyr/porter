@@ -137,11 +137,16 @@ class QueryTemplateController extends Controller
     }
 
     // get histories for a template
-
-    public function getHistoriesForTemplate($template_id)
+    public function getTemplateHistory($template_id)
     {
-        $histories = TemplateHistory::getHistoriesForTemplate($template_id);
-        return response()->json($histories, 200);
+        $history = TemplateHistory::getTemplateHistory($template_id);
+        return response()->json($history, 200);
+    }
+
+    // get all template histories
+    public function getAllTemplateHistory()
+    {
+        return response()->json(TemplateHistory::getAllTemplateHistory(), 200);
     }
 }
 

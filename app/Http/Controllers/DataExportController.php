@@ -782,5 +782,9 @@ class DataExportController extends ExternalDbController
         return $results;
     }
 
+    public static function getExportHistory(){
+        return TemplateExportHistory::getExportHistory();
+    }
+
 
 }

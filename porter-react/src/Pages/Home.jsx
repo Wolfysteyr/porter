@@ -6,7 +6,6 @@ import { useState } from "react";
 import { PieChart, pieArcLabelClasses } from "@mui/x-charts/PieChart";
 
 export default function Home() {
-
     // get appAddress, user, and token from context
     const { appAddress, token } = useContext(AppContext);
     const { user } = useContext(AppContext);
@@ -47,7 +46,7 @@ export default function Home() {
                 setTemplates([]);
             }
         }
-        
+
         // get databases for metrics
         async function fetchDatabases() {
             try {
@@ -73,8 +72,6 @@ export default function Home() {
             fetchDatabases();
         }
     }, [user, appAddress, token]);
-
-
 
     // helper to format ISO date to "time ago" string
     const formatTimeAgo = (iso) => {
@@ -126,7 +123,6 @@ export default function Home() {
     // get template name
     const getTemplateName = (template) =>
         template?.name || template?.title || `Template ${template?.id ?? ""}`;
-
 
     // prepare data for pie chart
     const databaseTotals = templates.reduce((acc, template) => {
@@ -220,61 +216,58 @@ export default function Home() {
     return (
         <>
             {user ? (
-                <div className="main-div">
+                <>
+                    {" "}
                     <h2 className="title">Welcome, {user.name}</h2>
-
-                    <div className="dashboard">
-                        <div>
-                            <p className="tile-title">Last Auto Runs</p>
-                            <div className="auto-run-tile">
-                                <ul>
-                                    {templates.length > 0 ? (
-                                        templates
-                                            .slice(0, 5)
-                                            .map((template) => (
-                                                <li key={template.id}>
-                                                    <Link
-                                                        className="template-link"
-                                                        to={`/templates/`}
-                                                        state={{
-                                                            template:
-                                                                template.id,
-                                                        }}
-                                                    >
-                                                        <span
-                                                            style={{
-                                                                overflow:
-                                                                    "ellipsis",
-                                                                whiteSpace:
-                                                                    "nowrap",
-                                                                textOverflow:
-                                                                    "ellipsis",
+                    <div className="main-div">
+                        <div className="dashboard">
+                            <div>
+                                <p className="tile-title">Last Auto Runs</p>
+                                <div className="auto-run-tile">
+                                    <ul>
+                                        {templates.length > 0 ? (
+                                            templates
+                                                .slice(0, 5)
+                                                .map((template) => (
+                                                    <li key={template.id}>
+                                                        <Link
+                                                            className="template-link"
+                                                            to={`/templates/`}
+                                                            state={{
+                                                                template:
+                                                                    template.id,
                                                             }}
                                                         >
-                                                            {template.name}
-                                                        </span>{" "}
-                                                        {" - "}
-                                                        {template.last_auto_run_at
-                                                            ? formatTimeAgo(
-                                                                  template.last_auto_run_at,
-                                                              )
-                                                            : "Never"}
-                                                    </Link>
-                                                </li>
-                                            ))
-                                    ) : (
-                                        <li>No templates found.</li>
-                                    )}
-                                </ul>
+                                                            <span
+                                                                style={{
+                                                                    overflow:
+                                                                        "ellipsis",
+                                                                    whiteSpace:
+                                                                        "nowrap",
+                                                                    textOverflow:
+                                                                        "ellipsis",
+                                                                }}
+                                                            >
+                                                                {template.name}
+                                                            </span>{" "}
+                                                            {" - "}
+                                                            {template.last_auto_run_at
+                                                                ? formatTimeAgo(
+                                                                      template.last_auto_run_at,
+                                                                  )
+                                                                : "Never"}
+                                                        </Link>
+                                                    </li>
+                                                ))
+                                        ) : (
+                                            <li>No templates found.</li>
+                                        )}
+                                    </ul>
+                                </div>
                             </div>
-                        </div>
 
-
-
-                        
                             <div className="metrics-content">
-                            
-                               <PieChart
+                                <PieChart
                                     series={databaseSeries}
                                     width={320}
                                     height={320}
@@ -285,34 +278,39 @@ export default function Home() {
                                     }}
                                     hideLegend
                                 />
-
                             </div>
 
-                        <div className="changelog-tile">
-                            <p className="tile-title">Changelog</p>
-                            <div className="tile-content changelog-content">
-                                <div className="changelog-title">
-                                    <strong>v1.0.0.0 (example)</strong>
-                                    <h6>29.01.2026</h6>
-                                </div>
+                            <div className="changelog-tile">
+                                <p className="tile-title">Changelog</p>
+                                <div className="tile-content changelog-content">
+                                    <div className="changelog-title">
+                                        <strong>v1.0.0.0 (example)</strong>
+                                        <h6>29.01.2026</h6>
+                                    </div>
 
-                                <ul>
-                                    <li>Added feature X to improve Y.</li>
-                                    <li>Fixed bug in Z that caused A.</li>
                                     <ul>
-                                        <li>Sub-point about the bug fix.</li>
-                                    </ul>
-                                    <li>Improved performance of B by C%.</li>
-                                    <li>Updated documentation for D.</li>
+                                        <li>Added feature X to improve Y.</li>
+                                        <li>Fixed bug in Z that caused A.</li>
+                                        <ul>
+                                            <li>
+                                                Sub-point about the bug fix.
+                                            </li>
+                                        </ul>
+                                        <li>
+                                            Improved performance of B by C%.
+                                        </li>
+                                        <li>Updated documentation for D.</li>
 
-                                   <h6>P.S. Gotta figure out how to make this dynamic...</h6> 
-                                </ul>
+                                        <h6>
+                                            P.S. Gotta figure out how to make
+                                            this dynamic...
+                                        </h6>
+                                    </ul>
+                                </div>
                             </div>
                         </div>
-
-                        
                     </div>
-                </div>
+                </>
             ) : (
                 <h2 className="title">Please log in to continue.</h2>
             )}

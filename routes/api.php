@@ -80,5 +80,10 @@ Route::post('/reset-password', function (Request $request) {
     ]);
 });
 
+// route to get all export history
+Route::get('/export/history', [DataExportController::class, 'getExportHistory'])->middleware('auth:sanctum');
+
+// route to get all template history
+Route::get('/templates/history', [QueryTemplateController::class, 'getAllTemplateHistory'])->middleware('auth:sanctum');
 // route to get template histories
-Route::get('/templates/{template_id}/history', [QueryTemplateController::class, 'getHistoriesForTemplate'])->middleware('auth:sanctum');
+Route::get('/templates/{template_id}/history', [QueryTemplateController::class, 'getTemplateHistory'])->middleware('auth:sanctum');
