@@ -224,7 +224,7 @@ export default function AdminControlPanel() {
                                     )}
                                     <button
                                         key={`edit-${user.id}`}
-                                        className="edit-button"
+                                        className={editUserId === user.id ? "delete-button" : "edit-button"}
                                         onClick={() => {
                                             setEditUserId((prev) =>
                                                 prev === user.id ? null : user.id
@@ -232,7 +232,7 @@ export default function AdminControlPanel() {
                                         }}
                                     >
                                         <img
-                                            src="public\icons\pencil.png"
+                                            src={editUserId === user.id ? "public/icons/close.png" : "public/icons/pencil.png"}
                                             style={{ maxHeight: "20px" }}
                                         />
                                     </button>
