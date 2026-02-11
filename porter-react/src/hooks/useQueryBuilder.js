@@ -829,7 +829,8 @@ export function useQueryBuilder({
         setToggleNewDBModal(true);
     }
 
-    // Expose all state and logic needed by TemplateSideMenu
+    //  ALL HAIL THE VARIABLE MONOLITH \\
+    // expose all state and functions needed by the QueryBuilder component
     return {
         handleFetchTableData,
         loading,
@@ -948,6 +949,4 @@ export function useQueryBuilder({
         toggleLoading,
         template,
     };
-
-    // 115 lines of vars lol
 }
