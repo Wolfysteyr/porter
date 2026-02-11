@@ -268,7 +268,7 @@ export default function LastUpdatePopover({ template }) {
         let nHistory_where_clauses = Array.isArray(nHistory?.template_query?.where)
             ? nHistory.template_query.where.map(
                   (clause) =>
-                      `${clause.column} ${clause.operator} ${clause.value}`,
+                      `${clause.column} ${clause.operator} ${clause.value ? clause.value : ''}`,
               )
             : [];
         let prevHistory_where_clauses = Array.isArray(
@@ -276,7 +276,7 @@ export default function LastUpdatePopover({ template }) {
         )
             ? prevHistory.template_query.where.map(
                   (clause) =>
-                      `${clause.column} ${clause.operator} ${clause.value}`,
+                      `${clause.column} ${clause.operator} ${clause.value ? clause.value : ''}`,
               )
             : [];
 
@@ -556,7 +556,7 @@ export default function LastUpdatePopover({ template }) {
                                 */}
                                 {/* Name change */}
                                 {diff?.name_change && (
-                                    <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #00b7ff', color: '#000000', backgroundColor: '#00b7ff', padding: '0.5rem' }}>
+                                    <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#00b7ff', padding: '0.5rem' }}>
                                         <em>Name:</em>{' '}
                                         {diff.name_change}
                                     </p>
@@ -564,7 +564,7 @@ export default function LastUpdatePopover({ template }) {
 
                                 {/* DB change */}
                                 {diff?.db_change && (
-                                    <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #00b7ff', color: '#000000', backgroundColor: '#00b7ff', padding: '0.5rem' }}>
+                                    <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#00b7ff', padding: '0.5rem' }}>
                                         <em>Database:</em>{' '}
                                         {diff.db_change}
                                     </p>
@@ -572,7 +572,7 @@ export default function LastUpdatePopover({ template }) {
 
                                 {/* Table change */}
                                 {diff?.table_change && (
-                                    <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #00b7ff', color: '#000000', backgroundColor: '#00b7ff', padding: '0.5rem' }}>
+                                    <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#00b7ff', padding: '0.5rem' }}>
                                         <em>Table:</em>{' '}
                                         {diff.table_change}
                                     </p>
@@ -582,11 +582,15 @@ export default function LastUpdatePopover({ template }) {
                                 {(diff?.query_added || diff?.query_removed) && (
                                     <>
                                     <em>Column Changes:</em>   
-                                    <div style={{border:"2px solid black", borderRadius: "4px", padding: "0.7rem"}}>
+                                    <div style={{border:"2px solid black", borderRadius: "4px", padding: "0.3rem"}}>
                                         {diff?.query_added?.columns?.length > 0 && (
-                                            <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #46cc51', color: '#000000', backgroundColor: '#46cc51', padding: '0.5rem' }}>
-                                                {diff.query_added.columns.join(', ')}
-                                            </p>
+                                            <>
+                                                {diff.query_added.columns.map((col) => (
+                                                    <p key={col} style={{ marginBottom: '0.0rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#46cc51', padding: '0.5rem' }}>
+                                                        <strong>+</strong>{col}
+                                                    </p>
+                                                ))}
+                                            </>
                                         )}
                                         {/* Also display fks as "sub" columns
                                             gotta redesign the way the fk changes are saved
@@ -594,9 +598,13 @@ export default function LastUpdatePopover({ template }) {
                                         
 
                                         {diff?.query_removed?.columns?.length > 0 && (
-                                            <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #ff4c4c', color: '#000000', backgroundColor: '#ff4c4c', padding: '0.5rem' }}>
-                                                {diff.query_removed.columns.join(', ')}
-                                            </p>
+                                            <>
+                                                {diff.query_removed.columns.map((col) => (
+                                                    <p key={col} style={{ marginBottom: '0.0rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#ff4c4c', padding: '0.5rem' }}>
+                                                        <strong>-</strong>{col}
+                                                    </p>
+                                                ))}
+                                            </>
                                         )}
                                     </div>
                                     </>
@@ -605,20 +613,30 @@ export default function LastUpdatePopover({ template }) {
                                 {(diff?.query_added?.where?.length > 0 || diff?.query_removed?.where?.length > 0) && (
                                     <>
                                     <em>Where Clauses:</em>
-                                    <div style={{border:"2px solid black", borderRadius: "4px", padding: "0.7rem"}}>
+                                    <div style={{border:"2px solid black", borderRadius: "4px", padding: "0.3rem"}}>
                                         {diff?.query_added?.where?.length > 0 && (
-                                            <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #46cc51', color: '#000000', backgroundColor: '#46cc51', padding: '0.5rem' }}>
-                                                {diff.query_added.where.join(', ')}
-                                            </p>
+                                            <>
+                                                {diff.query_added.where.map((clause, index) => (
+                                                    <p key={index} style={{ marginBottom: '0.1rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#46cc51', padding: '0.5rem' }}>
+                                                        <strong>+</strong>{clause}
+                                                    </p>
+                                                ))}
+                                            </>
                                         )}
                                         {diff?.query_removed?.where?.length > 0 && (
-                                            <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #ff4c4c', color: '#000000', backgroundColor: '#ff4c4c', padding: '0.5rem' }}>
-                                                {diff.query_removed.where.join(', ')}
-                                            </p>
+                                            <>
+                                                {diff.query_removed.where.map((clause, index) => (
+                                                    <p key={index} style={{ marginBottom: '0.1rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#ff4c4c', padding: '0.5rem' }}>
+                                                        <strong>-</strong>{clause}
+                                                    </p>
+                                                ))}
+                                            </>
                                         )}
                                     </div>
                                     </>
                                 )}
+
+                                {/* Export Changes */}
 
 
                             </div>
