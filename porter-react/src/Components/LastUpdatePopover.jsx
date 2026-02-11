@@ -3,8 +3,7 @@ import { React, useEffect, useState, useContext } from "react";
 import Popover from "@mui/material/Popover";
 import ListAltRoundedIcon from "@mui/icons-material/ListAltRounded";
 
-export default function LastUpdatePopover({ template, loading }) {
-
+export default function LastUpdatePopover({ template }) {
     // get app context values
     const { appAddress, user, token } = useContext(AppContext);
 
@@ -14,10 +13,11 @@ export default function LastUpdatePopover({ template, loading }) {
     const id1 = open1 ? "last-update-popover" : undefined;
 
     const [anchorEl2, setAnchorEl2] = useState(null);
+    const [selectedEntry, setSelectedEntry] = useState(null);
     const open2 = Boolean(anchorEl2);
     const id2 = open2 ? "last-update-popover-2" : undefined;
 
-        // Handlers to open/close popover
+    // Handlers to open/close popover
     const handleClick1 = (event) => {
         setAnchorEl1(event.currentTarget);
     };
@@ -25,18 +25,19 @@ export default function LastUpdatePopover({ template, loading }) {
         setAnchorEl1(null);
     };
 
-    const handleClick2 = (event) => {
+    const handleClick2 = (event, entry) => {
         setAnchorEl2(event.currentTarget);
-    }
+        setSelectedEntry(entry);
+    };
     const handleClose2 = () => {
         setAnchorEl2(null);
-    }
+        setSelectedEntry(null);
+    };
 
     const lastUpdate = template.updated_at;
 
     // template history data state
     const [history, setHistory] = useState([]); // contains the entire history for this template
-        
 
     // users data state
     const [users, setUsers] = useState([]);
@@ -64,7 +65,7 @@ export default function LastUpdatePopover({ template, loading }) {
         }
     }
 
-    async function fetchUsers(){
+    async function fetchUsers() {
         try {
             const response = await fetch(`${appAddress}/api/users`, {
                 method: "GET",
@@ -77,7 +78,7 @@ export default function LastUpdatePopover({ template, loading }) {
             if (response.ok) {
                 const data = await response.json();
                 return data;
-            }   
+            }
         } catch (error) {
             console.error("Error fetching users:", error);
         }
@@ -103,37 +104,367 @@ export default function LastUpdatePopover({ template, loading }) {
         return () => {
             isMounted = false;
         };
-
-    }, [template]);
+    }, [appAddress, token, template?.id]);
 
     // handle getting changes for each history entry
     // compares the current (selected) template with the previous version of the template to determine what was changed
     // like git diff but for templates
-
-
     function historyDiff(historyId) {
-        // something is screwing up with this function and causing the popover to either open doubly or show incorrect data
-        // leaving it unimplemented for now
-        // need to understand how to even implement this properly
-        // what needs to be done: get the current entry's template data and the previous entry's template data
-        // compare the two and determine what changed
-        // go over each and every field and see if it changed, meaning needing a whole lot of checking for each field in the template object
-        // return that data to be displayed in the popover in a way that looks good which could be hard since its not code
-        // each change needs its own <li> element in the popover, what changed and from what to what (added, removed, modified), without looking cluttered
-        // i hate it here
+
+        // If history hasn't loaded yet, avoid throwing during render.
+        if (!Array.isArray(history) || history.length === 0) return {};
+
+        // TYPES TO LOOK FOR \\
+
+        // non-array changes, simple
+        let name_change;
+        let db_change; // shouldnt even be possible at the moment but just in case
+        let table_change;
+
+        // array changes, more complex
+        // has to go through each array basically twice, checking both ways to see what was added and what was removed
+        let query_added = {
+            columns: [],
+            where: [],
+            foreign_keys: [],
+        }; // columns, where, fks
+        let query_removed = {
+            columns: [],
+            where: [],
+            foreign_keys: [],
+        };
+        let export_added = {
+            exportType: [],
+            targetTable: [],
+            targetDatabase: [],
+            findReplaceRules: [],
+            limitOffsetRules: [],
+            columnNameChanges: [],
+        }; // type, target db, target table/file, f&r, column name changes, limit/offset changes
+        let export_removed = {
+            exportType: [],
+            targetTable: [],
+            targetDatabase: [],
+            findReplaceRules: [],
+            limitOffsetRules: [],
+            columnNameChanges: [],
+        };
+        let export_changes = {
+            exportType: [],
+            targetTable: [],
+            targetDatabase: [],
+        };
+        let auto_changes = {
+            schedule: [],
+            interval: [],
+            unit: [],
+            active: [],
+        }; // schedule, interval, unit, active | same as export for all of these
+
+        // find the current version of the template in the history using the historyId
+        const nHistoryIndex = history.findIndex(
+            (entry) => String(entry.id) === String(historyId),
+        );
+        if (nHistoryIndex < 0) return {};
+
+        // histories are sorted DESC by date; the previous version is the next item.
+        const nEntry = history[nHistoryIndex];
+        const prevEntry = history[nHistoryIndex + 1] ?? null;
+
+        let nHistory = nEntry?.template_snapshot ?? null;
+        let prevHistory = prevEntry?.template_snapshot ?? null;
+
+        if (!nHistory) return {};
+
+
+        if (!prevHistory) {
+            // if there is no previous history, then this is the first version of the template, so we can just return all the values as added
+            name_change = `null => ${nHistory.template_name}`;
+            db_change = `null => ${nHistory.template_db}`;
+            table_change = `null => ${nHistory.template_table}`;
+            query_added.columns = Array.isArray(nHistory?.template_query?.columns)
+                ? nHistory.template_query.columns
+                : [];
+            query_added.where = Array.isArray(nHistory?.template_query?.where)
+                ? nHistory.template_query.where.map(
+                      (clause) =>
+                          `${clause.column} ${clause.operator} ${clause.value}`,
+                  )
+                : [];
+            query_added.foreign_keys = Array.isArray(
+                nHistory?.template_query?.foreign_keys,
+            )
+                ? nHistory.template_query.foreign_keys
+                : [];
+
+            export_added.exportType.push(nHistory?.export_settings?.exportType);
+            export_added.targetTable.push(nHistory?.export_settings?.targetTable);
+            export_added.targetDatabase.push(
+                nHistory?.export_settings?.targetDatabase,
+            );
+            export_added.findReplaceRules.push(
+                Array.isArray(nHistory?.export_settings?.findReplaceRules)
+                    ? nHistory.export_settings.findReplaceRules.map(
+                          (rule) => `${rule.find} -> ${rule.replace}`,
+                      )
+                    : [],
+            );
+            export_added.limitOffsetRules.push(
+                Array.isArray(nHistory?.export_settings?.limitOffsetRules)
+                    ? nHistory.export_settings.limitOffsetRules.map(
+                          (rule) => ({ limit: rule.limit, offset: rule.offset }),
+                      )
+                    : [],
+            );
+            export_added.columnNameChanges.push(
+                Array.isArray(nHistory?.export_settings?.columnNameChanges)
+                    ? nHistory.export_settings.columnNameChanges.map(
+                          (change) => `${change.original} -> ${change.new}`,
+                      )
+                    : [],
+            );
+
+            auto_changes.schedule.push(nHistory?.automation_settings?.schedule);
+            auto_changes.interval.push(nHistory?.automation_settings?.interval);
+            auto_changes.unit.push(nHistory?.automation_settings?.unit);
+            auto_changes.active.push(nHistory?.automation_settings?.active);
+            // return all values as added
+            let diffReturn = {
+                name_change,
+                db_change,
+                table_change,
+                query_added,
+                query_removed,
+                export_changes,
+                export_added,
+                export_removed,
+                auto_changes,
+            };
+            return diffReturn;
+        }
+        name_change = checkForChangeSimple(
+            prevHistory.template_name,
+            nHistory.template_name,
+        );
+        db_change = checkForChangeSimple(
+            prevHistory.template_db,
+            nHistory.template_db,
+        );
+        table_change = checkForChangeSimple(
+            prevHistory.template_table,
+            nHistory.template_table,
+        );
+
+        // column changes, quite simple as its just an array of column names, no other options or values to worry about
+        let col_diff = checkForChangeArray(
+            prevHistory?.template_query?.columns,
+            nHistory?.template_query?.columns,
+        );
+        query_added = { ...query_added, columns: col_diff.added };
+        query_removed = { ...query_removed, columns: col_diff.removed };
+
+        // where changes. decided to just turn the entire clause into a string here
+        // then split it back into individual values for the sake of database's correctness
+        let nHistory_where_clauses = Array.isArray(nHistory?.template_query?.where)
+            ? nHistory.template_query.where.map(
+                  (clause) =>
+                      `${clause.column} ${clause.operator} ${clause.value}`,
+              )
+            : [];
+        let prevHistory_where_clauses = Array.isArray(
+            prevHistory?.template_query?.where,
+        )
+            ? prevHistory.template_query.where.map(
+                  (clause) =>
+                      `${clause.column} ${clause.operator} ${clause.value}`,
+              )
+            : [];
+
+        let where_diff = checkForChangeArray(
+            prevHistory_where_clauses,
+            nHistory_where_clauses,
+        );
+        query_added = { ...query_added, where: where_diff.added };
+        query_removed = { ...query_removed, where: where_diff.removed };
+
+        // FOREIGN KEYS CHANGES \\
+        // foreign_keys shape can vary; stringify entries to avoid runtime crashes
+        const nFks = Array.isArray(nHistory?.template_query?.foreign_keys)
+            ? nHistory.template_query.foreign_keys
+            : [];
+        const prevFks = Array.isArray(prevHistory?.template_query?.foreign_keys)
+            ? prevHistory.template_query.foreign_keys
+            : [];
+
+        const fk_diff = checkForChangeArray(
+            prevFks.map((fk) => JSON.stringify(fk)),
+            nFks.map((fk) => JSON.stringify(fk)),
+        );
+        query_added = { ...query_added, foreign_keys: fk_diff.added };
+        query_removed = { ...query_removed, foreign_keys: fk_diff.removed };
+
+        // EXPORT CHANGES \\
+        // "export_settings": {
+        //      "exportType": true/false, "targetTable": "", "targetDatabase": "",
+        //      "findReplaceRules": [{"find": "", "replace": ""}], "limitOffsetRules": [{"limit": int, "offset": int}],
+        //      "columnNameChanges": [{"new": "", "original": ""}]}
+        export_changes.exportType.push(
+            checkForChangeSimple(
+                prevHistory.export_settings.exportType,
+                nHistory.export_settings.exportType,
+            ),
+        );
+        export_changes.targetTable.push(
+            checkForChangeSimple(
+                prevHistory.export_settings.targetTable,
+                nHistory.export_settings.targetTable,
+            ),
+        );
+        export_changes.targetDatabase.push(
+            checkForChangeSimple(
+                prevHistory.export_settings.targetDatabase,
+                nHistory.export_settings.targetDatabase,
+            ),
+        );
+
+        let frCol_diff = checkForChangeArray(
+            Array.isArray(prevHistory?.export_settings?.findReplaceRules)
+                ? prevHistory.export_settings.findReplaceRules.map(
+                      (rule) => `${rule.find} -> ${rule.replace}`,
+                  )
+                : [],
+            Array.isArray(nHistory?.export_settings?.findReplaceRules)
+                ? nHistory.export_settings.findReplaceRules.map(
+                      (rule) => `${rule.find} -> ${rule.replace}`,
+                  )
+                : [],
+        );
+        export_added.findReplaceRules.push(frCol_diff.added);
+        export_removed.findReplaceRules.push(frCol_diff.removed);
+        let loCol_diff = checkForChangeArray(
+            Array.isArray(prevHistory?.export_settings?.limitOffsetRules)
+                ? prevHistory.export_settings.limitOffsetRules.map(
+                      (rule) => `limit ${rule.limit} offset ${rule.offset}`,
+                  )
+                : [],
+            Array.isArray(nHistory?.export_settings?.limitOffsetRules)
+                ? nHistory.export_settings.limitOffsetRules.map(
+                      (rule) => `limit ${rule.limit} offset ${rule.offset}`,
+                  )
+                : [],
+        );
+        export_added.limitOffsetRules.push(loCol_diff.added);
+        export_removed.limitOffsetRules.push(loCol_diff.removed);
+        let colNameChange_diff = checkForChangeArray(
+            Array.isArray(prevHistory?.export_settings?.columnNameChanges)
+                ? prevHistory.export_settings.columnNameChanges.map(
+                      (change) => `${change.original} -> ${change.new}`,
+                  )
+                : [],
+            Array.isArray(nHistory?.export_settings?.columnNameChanges)
+                ? nHistory.export_settings.columnNameChanges.map(
+                      (change) => `${change.original} -> ${change.new}`,
+                  )
+                : [],
+        );
+        export_added.columnNameChanges.push(colNameChange_diff.added);
+        export_removed.columnNameChanges.push(colNameChange_diff.removed);
+
+        // AUTOMATION CHANGES \\
+        // "automation_settings": {"schedule": every/hourly/daily/weekly etc, "interval": int, "unit": minutes, hours, days etc, "active": true/false}
+        auto_changes.schedule.push(
+            checkForChangeSimple(
+                prevHistory?.automation_settings?.schedule,
+                nHistory?.automation_settings?.schedule,
+            ),
+        );
+        auto_changes.interval.push(
+            checkForChangeSimple(
+                prevHistory?.automation_settings?.interval,
+                nHistory?.automation_settings?.interval,
+            ),
+        );
+        auto_changes.unit.push(
+            checkForChangeSimple(
+                prevHistory?.automation_settings?.unit,
+                nHistory?.automation_settings?.unit,
+            ),
+        );
+        auto_changes.active.push(
+            checkForChangeSimple(
+                prevHistory?.automation_settings?.active,
+                nHistory?.automation_settings?.active,
+            ),
+        );
+
+        // compile all changes into one object to return
+        let diffReturn = {
+            name_change,
+            db_change,
+            table_change,
+            query_added,
+            query_removed,
+            export_changes,
+            export_added,
+            export_removed,
+            auto_changes,
+        };
+
+        return diffReturn;
     }
 
+    // HELPER FUNCTIONS FOR HISTORY DIFF \\
+
+    // checks for simple value changes like name, db, table
+    function checkForChangeSimple(a, b) {
+        if (a !== b) {
+            return `${a} => ${b}`; // return the change in the format "old => new"
+        }
+        return null; // return null if there is no change
+    }
+
+    // checks for array changes like queries, exports, automations
+    // if the array has sub-arrays, just go to the lowest level possible and call the function there.
+    function checkForChangeArray(a, b) {
+        const arrA = Array.isArray(a) ? a : [];
+        const arrB = Array.isArray(b) ? b : [];
+
+        let diff = { added: [], removed: [] };
+
+        arrA.forEach((item) => {
+            if (!arrB.includes(item)) diff.removed.push(item);
+        });
+        arrB.forEach((item) => {
+            if (!arrA.includes(item)) diff.added.push(item);
+        });
+
+        return diff;
+    }
+
+
+    const diff = selectedEntry ? historyDiff(selectedEntry.id) : null;
 
     return (
         <div>
             <span
                 id={id1}
-                style={{ textDecoration: "dotted underline", cursor: "help", textDecorationThickness: '2px' }}
+                style={{
+                    textDecoration: "dotted underline",
+                    cursor: "help",
+                    textDecorationThickness: "2px",
+                }}
                 onClick={handleClick1}
             >
-                {loading ? "Loading..." : lastUpdate ? new Date(lastUpdate).toLocaleDateString() : "N/A"}
-                <ListAltRoundedIcon 
-                    style={{paddingLeft: '5px', verticalAlign: 'middle', fontSize: '18px'}}
+                {lastUpdate
+                    ? `${new Date(lastUpdate).toLocaleDateString()}`
+                    : "No updates yet"}
+
+                <ListAltRoundedIcon
+                    style={{
+                        paddingLeft: "5px",
+                        verticalAlign: "middle",
+                        fontSize: "18px",
+                    }}
                 />
             </span>
             <Popover
@@ -156,35 +487,144 @@ export default function LastUpdatePopover({ template, loading }) {
                         <p>No update history available.</p>
                     ) : (
                         <ul style={{ paddingLeft: "1.2rem", margin: 0 }}>
-                            {history.map((entry, index) => (
-                                <li key={index} style={{ marginBottom: "0.5rem" }}>
-                                    <strong className="popover-history" onClick={handleClick2}>{new Date(entry.updated_at).toLocaleString()}</strong>
-                                    <Popover
-                                        id={id2}
-                                        open={open2}
-                                        anchorEl={anchorEl2}
-                                        onClose={handleClose2}
-                                        anchorOrigin={{
-                                            vertical: "center",
-                                            horizontal: "right",
-                                        }}
-                                        transformOrigin={{
-                                            vertical: "top",
-                                            horizontal: "left",
-                                        }}
+                            {history.map((entry) => (
+                                <li
+                                    key={entry.id ?? entry.updated_at}
+                                    style={{ marginBottom: "0.5rem" }}
+                                >
+                                    <strong
+                                        className="popover-history"
+                                        onClick={(e) => handleClick2(e, entry)}
                                     >
-                                        <div style={{ padding: "1rem", maxWidth: "300px", backgroundColor: "#c5c5c5" }}>
-                                            <p>Committed by <span style={{fontWeight:"bold"}}>{users.find(user => user.id === entry.committed_by)?.name || "Unknown"}</span></p>
-                                            <hr style={{border: "1px solid #000"}}/>
-                                            <p><strong>Changes:</strong></p>
-                                            <ul style={{ paddingLeft: "1.2rem", margin: 0 }}>
-                                              
-                                            </ul>
-                                        </div>
-                                    </Popover>
+                                        {new Date(
+                                            entry.updated_at,
+                                        ).toLocaleString()}
+                                    </strong>
                                 </li>
                             ))}
                         </ul>
+                    )}
+                </div>
+            </Popover>
+            {/* Single details Popover for the selected history entry */}
+            <Popover
+                id={id2}
+                open={open2}
+                anchorEl={anchorEl2}
+                onClose={handleClose2}
+                anchorOrigin={{
+                    vertical: "center",
+                    horizontal: "right",
+                }}
+                transformOrigin={{
+                    vertical: "top",
+                    horizontal: "left",
+                }}
+            >
+                <div
+                    style={{
+                        padding: "1rem",
+                        maxWidth: "300px",
+                        backgroundColor: "#c5c5c5",
+                    }}
+                >
+                    {selectedEntry ? (
+                        <>
+                            <p>
+                                Committed by{' '}
+                                <span style={{ fontWeight: 'bold' }}>
+                                    {users.find((user) => user.id === selectedEntry.committed_by)?.name || 'Unknown'}
+                                </span>
+                            </p>
+                            <hr style={{ border: '1px solid #000' }} />
+                            <p>
+                                <strong>Changes:</strong>
+                            </p>
+                            <div style={{ paddingLeft: '1.2rem', margin: 0 }} className="popover-changes">
+                                {/* Object structure for reference 
+                                    {
+                                        name_change: "old => new",
+                                        db_change: "old => new",
+                                        table_change: "old => new",
+                                        query_added: {columns: [], where: [{column, operator, value}], foreign_keys: [{fkTables: [cols], referencedTables: [tables]}], parentCol},
+                                        query_removed: {columns: [], where: [{column, operator, value}], foreign_keys: [{fkTables: [cols], referencedTables: [tables]}], parentCol},
+                                        export_changes: {exportType: "true/false => false/true", targetTable: "old => new", targetDatabase: "old => new"},
+                                        export_added: {findReplaceRules: [oldFind => newFind, oldReplace => newReplace], limitOffsetRules: [oldLimit => newLimit, oldOffset => newOffset], columnNameChanges: [oldName => newName]},
+                                        export_removed: {findReplaceRules: [oldFind => newFind, oldReplace => newReplace], limitOffsetRules: [oldLimit => newLimit, oldOffset => newOffset], columnNameChanges: [oldName => newName]},
+                                        auto_changes: {schedule: [oldSchedule => newSchedule], interval: [oldInterval => newInterval], unit: [oldUnit => newUnit], active: [oldActive => newActive]}
+                                    }
+                                */}
+                                {/* Name change */}
+                                {diff?.name_change && (
+                                    <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #00b7ff', color: '#000000', backgroundColor: '#00b7ff', padding: '0.5rem' }}>
+                                        <em>Name:</em>{' '}
+                                        {diff.name_change}
+                                    </p>
+                                )}
+
+                                {/* DB change */}
+                                {diff?.db_change && (
+                                    <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #00b7ff', color: '#000000', backgroundColor: '#00b7ff', padding: '0.5rem' }}>
+                                        <em>Database:</em>{' '}
+                                        {diff.db_change}
+                                    </p>
+                                )}
+
+                                {/* Table change */}
+                                {diff?.table_change && (
+                                    <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #00b7ff', color: '#000000', backgroundColor: '#00b7ff', padding: '0.5rem' }}>
+                                        <em>Table:</em>{' '}
+                                        {diff.table_change}
+                                    </p>
+                                )}
+
+                                {/* Query changes */}
+                                {(diff?.query_added || diff?.query_removed) && (
+                                    <>
+                                    <em>Column Changes:</em>   
+                                    <div style={{border:"2px solid black", borderRadius: "4px", padding: "0.7rem"}}>
+                                        {diff?.query_added?.columns?.length > 0 && (
+                                            <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #46cc51', color: '#000000', backgroundColor: '#46cc51', padding: '0.5rem' }}>
+                                                {diff.query_added.columns.join(', ')}
+                                            </p>
+                                        )}
+                                        {/* Also display fks as "sub" columns
+                                            gotta redesign the way the fk changes are saved
+                                         */}
+                                        
+
+                                        {diff?.query_removed?.columns?.length > 0 && (
+                                            <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #ff4c4c', color: '#000000', backgroundColor: '#ff4c4c', padding: '0.5rem' }}>
+                                                {diff.query_removed.columns.join(', ')}
+                                            </p>
+                                        )}
+                                    </div>
+                                    </>
+                                )}
+                                {/* Where clauses */}
+                                {(diff?.query_added?.where?.length > 0 || diff?.query_removed?.where?.length > 0) && (
+                                    <>
+                                    <em>Where Clauses:</em>
+                                    <div style={{border:"2px solid black", borderRadius: "4px", padding: "0.7rem"}}>
+                                        {diff?.query_added?.where?.length > 0 && (
+                                            <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #46cc51', color: '#000000', backgroundColor: '#46cc51', padding: '0.5rem' }}>
+                                                {diff.query_added.where.join(', ')}
+                                            </p>
+                                        )}
+                                        {diff?.query_removed?.where?.length > 0 && (
+                                            <p style={{ marginBottom: '0.1rem', borderRadius: '8px', border: '1px solid #ff4c4c', color: '#000000', backgroundColor: '#ff4c4c', padding: '0.5rem' }}>
+                                                {diff.query_removed.where.join(', ')}
+                                            </p>
+                                        )}
+                                    </div>
+                                    </>
+                                )}
+
+
+                            </div>
+                        </>
+                    ) : (
+                        <p>No entry selected.</p>
                     )}
                 </div>
             </Popover>
