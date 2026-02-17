@@ -191,11 +191,9 @@ export default function LastUpdatePopover({ template }) {
                           `${clause.column} ${clause.operator} ${clause.value}`,
                   )
                 : [];
-            query_added.foreign_keys = Array.isArray(
+            query_added.foreign_keys = flattenForeignKeys(
                 nHistory?.template_query?.foreign_keys,
-            )
-                ? nHistory.template_query.foreign_keys
-                : [];
+            );
 
             export_added.exportType.push(nHistory?.export_settings?.exportType);
             export_added.targetTable.push(nHistory?.export_settings?.targetTable);
@@ -288,7 +286,7 @@ export default function LastUpdatePopover({ template }) {
         query_removed = { ...query_removed, where: where_diff.removed };
 
         // FOREIGN KEYS CHANGES \\
-        // foreign_keys shape can vary; stringify entries to avoid runtime crashes
+        // flatten into parent/table/column tokens so FK columns can be shown under their parent column
         const nFks = Array.isArray(nHistory?.template_query?.foreign_keys)
             ? nHistory.template_query.foreign_keys
             : [];
@@ -296,12 +294,25 @@ export default function LastUpdatePopover({ template }) {
             ? prevHistory.template_query.foreign_keys
             : [];
 
+        const nFkFlat = flattenForeignKeys(nFks);
+        const prevFkFlat = flattenForeignKeys(prevFks);
+
         const fk_diff = checkForChangeArray(
-            prevFks.map((fk) => JSON.stringify(fk)),
-            nFks.map((fk) => JSON.stringify(fk)),
+            prevFkFlat.map((fk) => toForeignKeyToken(fk)),
+            nFkFlat.map((fk) => toForeignKeyToken(fk)),
         );
-        query_added = { ...query_added, foreign_keys: fk_diff.added };
-        query_removed = { ...query_removed, foreign_keys: fk_diff.removed };
+        query_added = {
+            ...query_added,
+            foreign_keys: fk_diff.added
+                .map((token) => fromForeignKeyToken(token))
+                .filter(Boolean),
+        };
+        query_removed = {
+            ...query_removed,
+            foreign_keys: fk_diff.removed
+                .map((token) => fromForeignKeyToken(token))
+                .filter(Boolean),
+        };
 
         // EXPORT CHANGES \\
         // "export_settings": {
@@ -441,8 +452,84 @@ export default function LastUpdatePopover({ template }) {
         return diff;
     }
 
+    function flattenForeignKeys(foreignKeys) {
+        const list = Array.isArray(foreignKeys) ? foreignKeys : [];
+
+        return list.flatMap((fk) => {
+            let fkObj = fk;
+            if (typeof fkObj === "string") {
+                try {
+                    fkObj = JSON.parse(fkObj);
+                } catch {
+                    return [];
+                }
+            }
+
+            const parentCol = fkObj?.parentCol ?? fkObj?.parent_column;
+            if (!parentCol) return [];
+
+            const tables = Array.isArray(fkObj?.fkTables) ? fkObj.fkTables : [];
+            return tables.flatMap((table) => {
+                const tableName = table?.tableName ?? table?.table ?? "";
+                const fkColumns = Array.isArray(table?.fkColumns)
+                    ? table.fkColumns
+                    : [];
+
+                return fkColumns
+                    .filter(Boolean)
+                    .map((fkColumn) => ({
+                        parentCol,
+                        tableName,
+                        fkColumn,
+                    }));
+            });
+        });
+    }
+
+    function toForeignKeyToken(fk) {
+        return JSON.stringify([
+            fk?.parentCol ?? "",
+            fk?.tableName ?? "",
+            fk?.fkColumn ?? "",
+        ]);
+    }
+
+    function fromForeignKeyToken(token) {
+        try {
+            const parsed = JSON.parse(token);
+            if (!Array.isArray(parsed) || parsed.length < 3) return null;
+            return {
+                parentCol: parsed[0],
+                tableName: parsed[1],
+                fkColumn: parsed[2],
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    function groupForeignKeysByParent(foreignKeys) {
+        const entries = Array.isArray(foreignKeys) ? foreignKeys : [];
+
+        return entries.reduce((acc, fk) => {
+            if (!fk?.parentCol || !fk?.fkColumn) return acc;
+            const label = fk.tableName
+                ? `${fk.tableName}.${fk.fkColumn}`
+                : `${fk.fkColumn}`;
+            if (!acc[fk.parentCol]) acc[fk.parentCol] = [];
+            acc[fk.parentCol].push(label);
+            return acc;
+        }, {});
+    }
+
 
     const diff = selectedEntry ? historyDiff(selectedEntry.id) : null;
+    const addedFkByParent = groupForeignKeysByParent(
+        diff?.query_added?.foreign_keys,
+    );
+    const removedFkByParent = groupForeignKeysByParent(
+        diff?.query_removed?.foreign_keys,
+    );
 
     return (
         <div>
@@ -586,26 +673,75 @@ export default function LastUpdatePopover({ template }) {
                                         {diff?.query_added?.columns?.length > 0 && (
                                             <>
                                                 {diff.query_added.columns.map((col) => (
-                                                    <p key={col} style={{ marginBottom: '0.0rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#46cc51', padding: '0.5rem' }}>
-                                                        <strong>+</strong>{col}
-                                                    </p>
+                                                    <div key={col}>
+                                                        <p style={{ marginBottom: '0.0rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#46cc51', padding: '0.5rem' }}>
+                                                            <strong>+</strong>{col}
+                                                        </p>
+                                                        {(addedFkByParent[col] || []).map((fkLabel, idx) => (
+                                                            <p key={"added-child-" + col + "-" + idx} style={{ marginBottom: '0.0rem', marginLeft: '1rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#6edb77', padding: '0.4rem', fontStyle: 'italic' }}>
+                                                                <strong>+FK</strong> {fkLabel}
+                                                            </p>
+                                                        ))}
+                                                    </div>
                                                 ))}
                                             </>
                                         )}
-                                        {/* Also display fks as "sub" columns
-                                            gotta redesign the way the fk changes are saved
-                                         */}
+
+                                        {/* FK-only additions where parent column itself didn't change */}
+                                        {Object.keys(addedFkByParent)
+                                            .filter(
+                                                (parent) =>
+                                                    !(diff?.query_added?.columns || []).includes(parent),
+                                            )
+                                            .map((parent) => (
+                                                <div key={"added-parent-only-" + parent}>
+                                                    <p style={{ marginBottom: '0.0rem', borderRadius: '8px', border: '1px dashed #2f7d37', color: '#000000', backgroundColor: '#d8f5dc', padding: '0.5rem' }}>
+                                                        <strong>FK Parent:</strong> {parent}
+                                                    </p>
+                                                    {addedFkByParent[parent].map((fkLabel, idx) => (
+                                                        <p key={"added-parent-only-child-" + parent + "-" + idx} style={{ marginBottom: '0.0rem', marginLeft: '1rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#6edb77', padding: '0.4rem', fontStyle: 'italic' }}>
+                                                            <strong>+FK</strong> {fkLabel}
+                                                        </p>
+                                                    ))}
+                                                </div>
+                                            ))}
                                         
 
                                         {diff?.query_removed?.columns?.length > 0 && (
                                             <>
                                                 {diff.query_removed.columns.map((col) => (
-                                                    <p key={col} style={{ marginBottom: '0.0rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#ff4c4c', padding: '0.5rem' }}>
-                                                        <strong>-</strong>{col}
-                                                    </p>
+                                                    <div key={col}>
+                                                        <p style={{ marginBottom: '0.0rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#ff4c4c', padding: '0.5rem' }}>
+                                                            <strong>-</strong>{col}
+                                                        </p>
+                                                        {(removedFkByParent[col] || []).map((fkLabel, idx) => (
+                                                            <p key={"removed-child-" + col + "-" + idx} style={{ marginBottom: '0.0rem', marginLeft: '1rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#ff8a8a', padding: '0.4rem', fontStyle: 'italic' }}>
+                                                                <strong>-FK</strong> {fkLabel}
+                                                            </p>
+                                                        ))}
+                                                    </div>
                                                 ))}
                                             </>
                                         )}
+
+                                        {/* FK-only removals where parent column itself didn't change */}
+                                        {Object.keys(removedFkByParent)
+                                            .filter(
+                                                (parent) =>
+                                                    !(diff?.query_removed?.columns || []).includes(parent),
+                                            )
+                                            .map((parent) => (
+                                                <div key={"removed-parent-only-" + parent}>
+                                                    <p style={{ marginBottom: '0.0rem', borderRadius: '8px', border: '1px dashed #9b2f2f', color: '#000000', backgroundColor: '#ffdede', padding: '0.5rem' }}>
+                                                        <strong>FK Parent:</strong> {parent}
+                                                    </p>
+                                                    {removedFkByParent[parent].map((fkLabel, idx) => (
+                                                        <p key={"removed-parent-only-child-" + parent + "-" + idx} style={{ marginBottom: '0.0rem', marginLeft: '1rem', borderRadius: '8px', border: 'transparent', color: '#000000', backgroundColor: '#ff8a8a', padding: '0.4rem', fontStyle: 'italic' }}>
+                                                            <strong>-FK</strong> {fkLabel}
+                                                        </p>
+                                                    ))}
+                                                </div>
+                                            ))}
                                     </div>
                                     </>
                                 )}
