@@ -232,7 +232,7 @@ export default function AdminControlPanel() {
                                         }}
                                     >
                                         <img
-                                            src={editUserId === user.id ? "public/icons/close.png" : "public/icons/pencil.png"}
+                                            src={editUserId === user.id ? "/icons/close.png" : "/icons/pencil.png"}
                                             style={{ maxHeight: "20px" }}
                                         />
                                     </button>
