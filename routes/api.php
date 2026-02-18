@@ -16,6 +16,9 @@ Route::get('/users', function (Request $request) {
     return \App\Models\User::all();
 })->middleware('auth:sanctum'); 
 
+// route to save user changes
+Route::put('/users/{id}', [AuthController::class, 'updateUser'])->middleware('auth:sanctum');
+
 
 // Authentication routes
 Route::post('/register', [AuthController::class, 'register']);

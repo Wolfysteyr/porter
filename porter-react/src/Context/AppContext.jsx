@@ -4,7 +4,8 @@ export const AppContext = createContext();
 
 export default function AppProvider({children}){
 
-    const appAddress = import.meta.env.APP_URL || "http://localhost:8000"; // Base URL for API requests, default to localhost if not set
+    // Use explicit APP_URL when provided; in dev use relative paths so Vite server proxy handles requests
+    const appAddress = import.meta.env.APP_URL ?? (import.meta.env.DEV ? '' : 'http://localhost:8000');
 
     // State for authentication token and user info
     const [token, setToken] = useState(localStorage.getItem('token')); // initialize token from localStorage

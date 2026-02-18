@@ -7,6 +7,11 @@ import { BorderAllRounded } from "@mui/icons-material";
 export default function AdminControlPanel() {
     const { user, appAddress, token } = useContext(AppContext);
 
+    const [editUserName, setEditUserName] = useState("");
+    const [editUserEmail, setEditUserEmail] = useState("");
+    const [editUserAdmin, setEditUserAdmin] = useState(false);
+    const [editUserAccess, setEditUserAccess] = useState([]);
+
     // State for template history
     const [templateHistory, setTemplateHistory] = useState([]);
 
@@ -17,6 +22,8 @@ export default function AdminControlPanel() {
     const [users, setUsers] = useState([]);
 
     const [editUserId, setEditUserId] = useState(null);
+
+    const [databases, setDatabases] = useState([]);
     
 
     useEffect(() => {
@@ -34,8 +41,7 @@ export default function AdminControlPanel() {
                 const data = await response.json();
                 setTemplateHistory(data);
             } catch (error) {
-                console.error("Error fetching template history:", error);
-            }
+                console.error("Error fetching template history:", error);}
         }
 
         async function fetchUsers() {
@@ -79,12 +85,74 @@ export default function AdminControlPanel() {
             }
         }
 
+        async function fetchDatabases() {
+            try {
+                const response = await fetch(
+                    `${appAddress}/api/databases/external`,
+                    {
+                        method: "GET",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`,
+                        },
+                        credentials: "include",
+                    },
+                );
+                if (response.ok) {
+                    const data = await response.json();
+                    setDatabases(data);
+                }
+            } catch (error) {
+                console.error("Error fetching databases:", error);
+            }
+        }
+        fetchDatabases();
+
         if (user && user.admin === 1) {
             fetchAllTemplateHistory();
             fetchUsers();
             fetchExportHistory();
         }
     }, [user, appAddress, token]);
+
+    // function to handle saving user changes when pressing save button
+    async function handleSaveUser(userId) {
+        // compile payload of changes, only including fields that have been changed
+        const payload = {
+            ...(editUserName && { name: editUserName }),
+            ...(editUserEmail && { email: editUserEmail }),
+            ...(editUserAdmin !== undefined && { admin: editUserAdmin }),
+            ...(editUserAccess.length > 0 && { access: editUserAccess }),
+        }
+
+        try{
+            const response = await fetch(`${appAddress}/api/users/${userId}`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                credentials: "include",
+                body: JSON.stringify(payload),
+            });
+            if(response.ok){
+                // update user in local state to reflect changes
+                setUsers((prevUsers) => prevUsers.map((user) => user.id === userId ? { ...user, ...payload } : user));
+                setEditUserId(null); // exit edit mode
+            } else {
+                console.error("Error saving user changes:", response.statusText);
+            }
+        } catch (error) {
+            console.error("Error saving user changes:", error);    
+        } finally {
+            // reset edit states
+            setEditUserName("");
+            setEditUserEmail("");
+            setEditUserAdmin(false);
+            setEditUserAccess([]);
+            setEditUserId(null);
+        }
+    }
 
     return (
         <>
@@ -201,16 +269,44 @@ export default function AdminControlPanel() {
                     <br />
                     <div className="users">
                         users
-                        <ul>
+                        <div>
                             {users.map((user) => (
-                                <li key={user.id}>
+                                <div
+                                    key={user.id}
+                                    style={{
+                                        display: "flex",
+                                        flexDirection:
+                                            editUserId === user.id
+                                                ? "column"
+                                                : "row",
+                                        gap: "1rem",
+                                        paddingBottom: "1rem",
+                                        justifyContent: "space-between",
+                                        alignItems:
+                                            editUserId === user.id
+                                                ? "flex-start"
+                                                : "center",
+                                        borderBottom: "1px solid black",
+                                        
+                                    }}
+                                >
                                     {editUserId === user.id ? (
                                         <>
                                             <span>ID: {user.id}</span>
-                                            <input type="text" defaultValue={user.name} />
-                                            <input type="text" defaultValue={user.email} />
-                                            <input type="checkbox" defaultChecked={user.admin} /> Admin <br />
-                                            <input type="text" defaultValue={user.access} />
+                                            <input type="text" defaultValue={user.name} onChange={(e) => setEditUserName(e.target.value)} />
+                                            <input type="text" defaultValue={user.email} onChange={(e) => setEditUserEmail(e.target.value)} />
+                                            <input type="checkbox" defaultChecked={user.admin} onChange={(e) => setEditUserAdmin(e.target.checked)} /> Admin <br />
+                                            {databases.map((db) => (
+                                                <div key={db.id}>
+                                                    <input type="checkbox" checked={editUserAccess.includes(db.id)} onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setEditUserAccess((prev) => [...prev, db.id]);
+                                                        } else {
+                                                            setEditUserAccess((prev) => prev.filter((id) => id !== db.id));
+                                                        }
+                                                    }} /> {db.name} <br />
+                                                </div>
+                                            ))}
                                         </>
                                     ) : (
                                         <>
@@ -218,7 +314,8 @@ export default function AdminControlPanel() {
                                             <span>{user.name}</span> <br />
                                             <span>{user.email}</span> <br />
                                             <span>{user.admin}</span> <br />
-                                            <span>{user.access}</span> <br /> {/* change this to be a selection of databases, adding one allows the users to see and interact with it
+                                            {user.access} <br />    
+                                             {/* change this to be a selection of databases, adding one allows the users to see and interact with it
                                                                                     maybe something else as well later on*/}
                                         </>
                                     )}
@@ -229,6 +326,11 @@ export default function AdminControlPanel() {
                                             setEditUserId((prev) =>
                                                 prev === user.id ? null : user.id
                                             );
+
+                                            setEditUserAccess(user.access || []); // set access state to current user access when entering edit mode
+                                            setEditUserAdmin(user.admin); // set admin state to current user admin when entering edit mode
+                                            setEditUserEmail(user.email); // set email state to current user email when entering edit mode
+                                            setEditUserName(user.name); // set name state to current user name when entering edit mode
                                         }}
                                     >
                                         <img
@@ -238,12 +340,12 @@ export default function AdminControlPanel() {
                                     </button>
                                     {editUserId === user.id && (
                                         <>
-                                            <button className="save-button" onClick={() => setEditUserId(0)}>Save</button> {/* implement save functionality later, for now just closes edit mode */}
+                                            <button className="save-button" onClick={() => handleSaveUser(user.id)}>Save</button> {/* implement save functionality later, for now just closes edit mode */}
                                         </>
                                     )}
-                                </li>
+                                </div>
                             ))}
-                        </ul>
+                        </div>
                     </div>
                 </div>
             </div>
