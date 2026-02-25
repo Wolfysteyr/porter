@@ -139,14 +139,24 @@ class QueryTemplateController extends Controller
     // get histories for a template
     public function getTemplateHistory($template_id)
     {
-        $history = TemplateHistory::getTemplateHistory($template_id);
-        return response()->json($history, 200);
+        try {
+            $history = TemplateHistory::getTemplateHistory($template_id);
+            return response()->json($history, 200);
+        } catch (\Throwable $e) {
+            Log::error('Error fetching template history', ['template_id' => $template_id, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return response()->json(['message' => 'Failed to fetch template history'], 500);
+        }
     }
 
     // get all template histories
     public function getAllTemplateHistory()
     {
-        return response()->json(TemplateHistory::getAllTemplateHistory(), 200);
+        try {
+            return response()->json(TemplateHistory::getAllTemplateHistory(), 200);
+        } catch (\Throwable $e) {
+            Log::error('Error fetching all template histories', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return response()->json(['message' => 'Failed to fetch template histories'], 500);
+        }
     }
 }
 

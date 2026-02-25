@@ -88,5 +88,5 @@ Route::get('/export/history', [DataExportController::class, 'getExportHistory'])
 
 // route to get all template history
 Route::get('/templates/history', [QueryTemplateController::class, 'getAllTemplateHistory'])->middleware('auth:sanctum');
-// route to get template histories
+// route to get specific template histories
 Route::get('/templates/{template_id}/history', [QueryTemplateController::class, 'getTemplateHistory'])->middleware('auth:sanctum');

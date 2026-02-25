@@ -66,7 +66,7 @@ class TemplateHistory extends Model
     }
 
     public static function getAllTemplateHistory(){
-        return self::with('user', 'template') // eager load user and template relationships
+        return self::with('template') // eager load template relationship
             ->orderBy('created_at', 'desc')
             ->get();
     }

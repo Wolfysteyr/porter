@@ -24,7 +24,19 @@ export default function AdminControlPanel() {
     const [editUserId, setEditUserId] = useState(null);
 
     const [databases, setDatabases] = useState([]);
-    
+
+    //template log history styles
+    function getLogStyles(log) {
+        if (log.action === "create") {
+            return { backgroundColor: "#3c9b3c", border: "2px solid #c3e6cb" };
+        }
+        if (log.action === "update") {
+            return { backgroundColor: "#46c8fc", border: "2px solid #ffeeba" };
+        }
+        if (log.action === "delete") {
+            return { backgroundColor: "#f55454", border: "2px solid #f5c6cb" };
+        }
+    };
 
     useEffect(() => {
         document.title = "Admin Control Panel - Porter";
@@ -36,7 +48,13 @@ export default function AdminControlPanel() {
                     `${appAddress}/api/templates/history`,
                     {
                         method: "GET",
+                        headers:{
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`,
+                        },
+                        credentials: "include",
                     },
+                    
                 );
                 const data = await response.json();
                 setTemplateHistory(data);
@@ -180,7 +198,7 @@ export default function AdminControlPanel() {
                             </thead>
                             <tbody>
                                 {templateHistory.map((log) => (
-                                    <tr key={log.id}>
+                                    <tr key={log.id} style={getLogStyles(log)}>
                                         <td>{log.id}</td>
                                         <td>{log.template_id}</td>
                                         <td>{log.action}</td>
