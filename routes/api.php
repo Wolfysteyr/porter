@@ -14,16 +14,20 @@ Route::get('/user', function (Request $request) {
 
 Route::get('/users', function (Request $request) {
     return \App\Models\User::all();
-})->middleware('auth:sanctum'); 
+})->middleware('auth:sanctum');
 
 // route to save user changes
-Route::put('/users/{id}', [AuthController::class, 'updateUser'])->middleware('auth:sanctum');
+Route::put('/users/{id}', [AuthController::class, 'update'])->middleware('auth:sanctum');
+// provide a POST fallback for clients that have trouble issuing PUT requests
+Route::post('/users/{id}', [AuthController::class, 'update'])->middleware('auth:sanctum');
 
 
 // Authentication routes
 Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class,'login']);
+Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
+
+
 // External Database routes
 use App\Http\Controllers\ExternalDbController;
 
@@ -31,7 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/databases/external', [ExternalDbController::class, 'listExternalDbs']);
     Route::post('/databases/external', [ExternalDbController::class, 'createExternalDb']);
     // RESTful routes used by the React frontend (index/store/update/destroy)
-    Route::apiResource('databases/external', ExternalDbController::class)->only(['index','store','update','destroy']);
+    Route::apiResource('databases/external', ExternalDbController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::get('/databases/external/tables', [ExternalDbController::class, 'listTables']);
     Route::post('/databases/external/tables/{table}', [ExternalDbController::class, 'getTableData']);
     Route::get('/databases/external/tables/{table}/columns', [ExternalDbController::class, 'getTableColumns']);
@@ -39,6 +43,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 //Export Data routes
 use App\Http\Controllers\DataExportController;
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/export', [DataExportController::class, 'checkExportType']);
 });

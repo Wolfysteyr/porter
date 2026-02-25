@@ -136,14 +136,23 @@ export default function AdminControlPanel() {
     // function to handle saving user changes when pressing save button
     async function handleSaveUser(userId) {
         // compile payload of changes, only including fields that have been changed
-        const payload = {
-            ...(editUserName && { name: editUserName }),
-            ...(editUserEmail && { email: editUserEmail }),
-            ...(editUserAdmin !== undefined && { admin: editUserAdmin }),
-            ...(editUserAccess.length > 0 && { access: editUserAccess }),
+        const payload = {};
+        
+        if (editUserName && editUserName !== "") payload.name = editUserName;
+        if (editUserEmail && editUserEmail !== "") payload.email = editUserEmail;
+        if (editUserAdmin !== user.admin) payload.admin = editUserAdmin;
+        if (editUserAccess.length > 0 || (user.access && editUserAccess.length === 0)) {
+            payload.access = editUserAccess;
+        }
+
+        // Don't send empty payload
+        if (Object.keys(payload).length === 0) {
+            console.log("No changes to save");
+            return;
         }
 
         try{
+            console.log("payload being sent to server:", payload, "for user ID:", userId);
             const response = await fetch(`${appAddress}/api/users/${userId}`, {
                 method: "PUT",
                 headers: {
@@ -155,7 +164,7 @@ export default function AdminControlPanel() {
             });
             if(response.ok){
                 // update user in local state to reflect changes
-                setUsers((prevUsers) => prevUsers.map((user) => user.id === userId ? { ...user, ...payload } : user));
+                setUsers((prevUsers) => prevUsers.map((u) => u.id === userId ? { ...u, ...payload } : u));
                 setEditUserId(null); // exit edit mode
             } else {
                 console.error("Error saving user changes:", response.statusText);
@@ -314,17 +323,26 @@ export default function AdminControlPanel() {
                                             <input type="text" defaultValue={user.name} onChange={(e) => setEditUserName(e.target.value)} />
                                             <input type="text" defaultValue={user.email} onChange={(e) => setEditUserEmail(e.target.value)} />
                                             <input type="checkbox" defaultChecked={user.admin} onChange={(e) => setEditUserAdmin(e.target.checked)} /> Admin <br />
-                                            {databases.map((db) => (
-                                                <div key={db.id}>
-                                                    <input type="checkbox" checked={editUserAccess.includes(db.id)} onChange={(e) => {
-                                                        if (e.target.checked) {
-                                                            setEditUserAccess((prev) => [...prev, db.id]);
-                                                        } else {
-                                                            setEditUserAccess((prev) => prev.filter((id) => id !== db.id));
-                                                        }
-                                                    }} /> {db.name} <br />
-                                                </div>
-                                            ))}
+                                            {databases.map((db) => {
+                                                const isChecked = editUserAccess.includes(db.id);
+                                                
+                                                return (
+                                                    <div key={db.id}>
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={isChecked}
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setEditUserAccess((prev) => [...prev, db.id]);
+                                                                } else {
+                                                                    setEditUserAccess((prev) => prev.filter((id) => id !== db.id));
+                                                                }
+                                                            }} 
+                                                        /> 
+                                                        {db.name} <br />
+                                                    </div>
+                                                );
+                                            })}
                                         </>
                                     ) : (
                                         <>
@@ -332,7 +350,17 @@ export default function AdminControlPanel() {
                                             <span>{user.name}</span> <br />
                                             <span>{user.email}</span> <br />
                                             <span>{user.admin}</span> <br />
-                                            {user.access} <br />    
+                                            {(() => {
+                                                const accessArray = Array.isArray(user.access) ? user.access : (typeof user.access === 'string' ? JSON.parse(user.access) : []);
+                                                return accessArray.length > 0 ? (
+                                                    <ul style={{ margin: 0, paddingLeft: '1rem' }}>
+                                                        {accessArray.map((dbId) => {
+                                                            const db = databases.find((d) => d.id === dbId);
+                                                            return <li key={dbId}>{db ? db.name : `Database ID ${dbId}`}</li>;
+                                                        })}
+                                                    </ul>
+                                                ) : 'No database access';
+                                            })()} <br />
                                              {/* change this to be a selection of databases, adding one allows the users to see and interact with it
                                                                                     maybe something else as well later on*/}
                                         </>
@@ -345,7 +373,7 @@ export default function AdminControlPanel() {
                                                 prev === user.id ? null : user.id
                                             );
 
-                                            setEditUserAccess(user.access || []); // set access state to current user access when entering edit mode
+                                            setEditUserAccess(Array.isArray(user.access) ? user.access : (typeof user.access === 'string' ? JSON.parse(user.access) : [])); // set access state to current user access when entering edit mode
                                             setEditUserAdmin(user.admin); // set admin state to current user admin when entering edit mode
                                             setEditUserEmail(user.email); // set email state to current user email when entering edit mode
                                             setEditUserName(user.name); // set name state to current user name when entering edit mode

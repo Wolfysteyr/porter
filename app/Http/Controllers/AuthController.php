@@ -88,30 +88,41 @@ class AuthController extends Controller
     }
 
     // screw it, put the user update here too, i dont care
-    public function updateUser(Request $request)
+    public function update(Request $request, $id)
     {
         $request->validate([
             'name' => 'sometimes|required|max:255',
-            'email' => 'sometimes|required|email|unique:users,email,' . $request->id,
+            'email' => 'sometimes|required|email|unique:users,email,' . $id,
             'admin' => 'sometimes|boolean',
-            'access' => 'sometimes|json'
+            'access' => 'sometimes'
         ]);
-        $user = User::findOrFail($request->id);
-        $user->name = $request->name;
-        $user->email = $request->email;
+
+        $user = User::findOrFail($id);
+
+        if ($request->has('name')) {
+            $user->name = $request->name;
+        }
+
+        if ($request->has('email')) {
+            $user->email = $request->email;
+        }
+
         if ($request->has('admin')) {
             $user->admin = $request->admin;
         }
+
         if ($request->has('access')) {
-            if(is_array($request->access)){
+            if (is_array($request->access)) {
                 $user->access = json_encode($request->access);
             } else {
                 $user->access = $request->access;
             }
         }
+
         $user->save();
+
         return [
-            'user' => $user
+            'user' => $user,
         ];
     }
 }
